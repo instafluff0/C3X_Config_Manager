@@ -1,0 +1,36 @@
+* RELEASE 27.0
+- Changed `New -> Create from Base Game` to use a typed `Search Folder` field instead of a browse-only folder path, matching the copy-scenario flow and defaulting that field from the scenario name.
+- Fixed base-scenario creation so pre-R28 C3X installs no longer fail when `default.tile_animations.txt` is absent; tile animations are now treated as optional during scenario creation.
+- Improved scenario creation/save-as failure feedback so users now get an in-app error status, failure toast, and details summary instead of a silent modal close when creation fails.
+- Fixed `C3X -> Production Perfume` so the type dropdown only offers the documented `Improvement` and `Unit` options; unknown existing names are still preserved/editable through the picker.
+- Fixed `Building Prereqs for Units` parsing so quoted multi-word unit names like `"Supply Barge"` and `"Dark Supply Barge"` no longer get collapsed into comma-joined tokens in the UI.
+- Tightened several structured C3X base editors so `Unit Limits` now uses a denser inline row layout, `Building Prereqs for Units` better visually nests units under their building, and `Buildings Generating Resources` now uses the same friendly labeled flag chips as district generated resources.
+- Fixed district preview invalidation when switching game/mod context so the initial district art no longer reuses stale art from the previous config until another picker click.
+- Fixed district representative preview initialization so era/building picker highlights now stay in sync with the initially shown district art, including suppressing the transient flash from default picker states.
+- Added `render_strategy = by-building` district preview support so the preview composites base art with multiple selected building layers and the Buildings picker becomes multi-select in that mode.
+- Added the remaining documented R27 district fields to the structured district editor, including `render_strategy`, `generated_resource`, `resource_prereq_on_tile`, `img_column_count`, `ai_build_strategy`, ally-build flags, impassibility flags, irrigation-source, and one-turn healing.
+- Fixed district `generated_resource` and `resource_prereq_on_tile` serialization/parsing parity with C3X, including whitespace-separated generated-resource flags and correct quoting for multi-word resource names.
+- Improved district generated-resource editing so the UI now uses a real resource picker plus structured `Local`, `Yields`, and `No Tech Requirement` toggles instead of raw freeform flag text.
+- Added broad district config parity coverage and district preview-selection regression tests for district field round-tripping and representative building-button normalization.
+- Fixed C3X bitfield-list base settings such as `special_zone_of_control_rules`, `special_defensive_bombard_rules`, `land_transport_rules`, and `special_helicopter_rules` to serialize in C3X-compatible whitespace-delimited bracket form instead of comma-separated lists.
+- Added an explicit audited manifest for all 240 shipped C3X base keys, including typed family metadata for enums, bitfield lists, quoted reference lists, quoted strings, and other structured base-field serializers.
+- Added stronger C3X base audit coverage so tests now verify full shipped-key manifest coverage plus save/reload syntax parity for every explicit C3X string-family field.
+- Fixed C3X quoted unit/improvement reference-list settings such as `ptw_like_artillery_targeting`, `exclude_types_from_units_per_tile_limit`, `limit_defensive_retreat_on_water_to_types`, and `ai_multi_start_extra_palaces` to use C3X-compatible whitespace-delimited quoted list syntax instead of comma-separated lists.
+- Fixed additional C3X enum parity issues, including the missing `if-not-slower` and `if-fast-and-not-slower` retreat-rule options and the source order for `double_minimap_size`.
+- Added scalar-family C3X base audit coverage so every boolean and integer base key now has explicit save/reload syntax tests, and added an audit-tier completeness test so every manifest key must belong to a named audit bucket.
+- Unified segmented chip controls across the app so shared single-choice and multi-choice chip UIs now consistently use the same green active styling.
+- Added a scenario tech tree civilization filter with civilization thumbnails so modders can preview civ-specific research trees that depend on hidden free-tech gates.
+- Expanded and refined the tech tree modal layout, including larger presentation, tighter hint text, a default `All Techs` filter on fresh open, and no horizontal scrollbar.
+- Fixed tech tree undo behavior so `Undo` correctly restores node positions, the restore overlay appears above the tech tree modal, and the toolbar now includes both `Undo` and `Undo All` without clearing the active civ filter during undo refreshes.
+- Added an optional civ-filtered non-era lane in the tech tree so faction gate techs with `era = None` can be shown separately from the visible era graph, including Tides of Crimson-style civ-specific free-tech seeds such as `BREHTONS` and `GOOD-NEUTRAL`.
+- Refined the tech tree split layout so the visible era graph stays in the right pane, the left pane uses the same title treatment as the era label, and non-era techs are distributed within the visible era's vertical span instead of clumping at the top.
+- Fixed multiple tech tree regressions while adding the non-era lane, including proper `None` era classification, safer gutter graph traversal, and explicit lane toggling behavior.
+- Tests: pinned `c3xBaseManifest` coverage to a checked-in default base config fixture so manifest audits no longer depend on the local sibling `C3X_Districts` install contents.
+- Scenario loads now kick off a background quality-audit worker that surfaces file/asset warnings without delaying the initial render, including proactive day/night terrain and district hour-art validation.
+- Added background quality-audit checks for missing on-disk reference art in the Civilizations, Technologies, Resources, Governments, Improvements, and Units tabs.
+- C3X tab field search now also matches each setting's release badge, so queries like `r26` find fields introduced in that release without losing normal name/description search.
+- Added configurable text-file encoding support for Civilopedia, PediaIcons, and diplomacy assets, including auto-detection for common Civ3 code pages, source-encoding preservation on save, and a global UI override for localized installs/mods.
+- Added first-pass non-blocking config lint checks for unknown keys and invalid boolean/integer/select/list values in C3X base config plus Districts, Wonder Districts, and Natural Wonders.
+- Fixed several C3X base-field editor mismatches with the actual parser, including proper `limit_railroad_movement` editing, preserving empty bitfield-list selections, and recognizing special limit fields as non-boolean.
+- Added a `File -> Settings -> Run Quality Checks After Load` preference, enabled by default, so users can disable the background post-load audit warnings if they prefer.
+- Moved `Text File Encoding` out of the top file-path panel and into `File -> Settings` so file-path controls stay focused on location selection.

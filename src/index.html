@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Civ 3 | C3X Modern Configuration Manager</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-a"></div>
+    <div class="bg-shape bg-shape-b"></div>
+
+    <header class="hero">
+      <div class="hero-title-wrap">
+        <div class="title-row">
+          <h1>Civ 3 | C3X Modern Configuration Manager</h1>
+          <span id="scenario-title-chip" class="scenario-title-chip hidden">Scenario: (not loaded)</span>
+        </div>
+        <p>Manage Civilization 3 Conquests and C3X global and scenario settings all in one place</p>
+        <div class="mode-state" id="mode-state">
+          <span id="mode-state-badge" class="mode-state-badge">Standard Game</span>
+          <span id="mode-state-detail" class="mode-state-detail">Not loaded yet</span>
+        </div>
+      </div>
+      <div class="mode-pill-group">
+        <button id="mode-global" class="mode-pill">Standard Game</button>
+        <select id="mode-scenario-select" class="mode-pill mode-select" aria-label="Choose scenario">
+          <option value="">Scenario...</option>
+          <option value="__manual__">Manual / Browse...</option>
+        </select>
+        <select id="mode-scenario-new-action" class="mode-pill mode-select mode-pill-new" aria-label="New scenario actions">
+          <option value="">New</option>
+          <option value="__create_base__">Create from Base Game...</option>
+          <option value="__copy_existing__">Copy Existing Scenario...</option>
+        </select>
+      </div>
+    </header>
+
+    <section class="paths card">
+      <div class="actions">
+        <button id="paths-toggle" class="ghost" type="button">Hide File Paths</button>
+        <span id="paths-summary" class="paths-summary"></span>
+        <button id="global-search-btn" class="ghost" type="button" title="Jump Search (Ctrl/Cmd+K)"><span class="btn-icon">🔎</span>Search</button>
+        <button id="back-btn" class="ghost nav-btn" type="button" aria-label="Back" title="Back">←</button>
+        <button id="forward-btn" class="ghost nav-btn" type="button" aria-label="Forward" title="Forward">→</button>
+        <button id="save-btn" class="secondary"><span class="btn-icon">💾</span>Save</button>
+        <button id="save-as-btn" class="ghost" type="button"><span class="btn-icon">📁</span>Save As</button>
+        <button id="undo-btn" class="ghost" type="button"><span class="btn-icon">↶</span>Undo</button>
+        <button id="undo-all-btn" class="ghost" type="button"><span class="btn-icon">↺</span>Undo All</button>
+        <button id="delete-scenario-btn" class="ghost danger-ghost" type="button"><span class="btn-icon">🗑</span>Delete</button>
+      </div>
+
+      <div class="path-grid-wrap" id="paths-body">
+        <div class="path-grid">
+          <label class="path-row">
+            <span class="path-label"><span class="path-dot"></span>Civilization 3 Folder</span>
+            <input id="civ3-path" type="text" placeholder="Path containing Conquests/" />
+            <button id="pick-civ3">Browse</button>
+          </label>
+
+          <label class="path-row">
+            <span class="path-label"><span class="path-dot"></span>C3X Folder</span>
+            <input id="c3x-path" type="text" placeholder="Path containing default.c3x_config.ini" />
+            <button id="pick-c3x">Browse</button>
+          </label>
+
+          <label class="path-row" id="scenario-path-row">
+            <span class="path-label"><span class="path-dot"></span>Scenario .biq File</span>
+            <input id="scenario-path" type="text" placeholder="Select a scenario .biq file" />
+            <button id="pick-scenario">Browse</button>
+          </label>
+
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace card hidden" id="workspace">
+      <nav class="tabs" id="tabs"></nav>
+      <div id="tab-content" class="tab-content"></div>
+    </section>
+
+    <template id="section-editor-template">
+      <div class="section-editor">
+        <div class="section-editor-header">
+          <h3></h3>
+          <span class="source-tag"></span>
+          <button class="add-section">Add Block</button>
+        </div>
+        <div class="section-list"></div>
+      </div>
+    </template>
+
+    <div class="floating-tools" aria-label="Quick tools">
+      <button id="files-read-toggle" class="debug-fab files-read-fab" title="Show files read">📄</button>
+      <button id="debug-toggle" class="debug-fab" title="Open Debug Log">🛠</button>
+      <div class="floating-font-controls" aria-label="Font size controls">
+        <button id="font-down" class="ghost font-btn" type="button" aria-label="Decrease font size">A-</button>
+        <span id="font-scale-label" class="font-scale-label">100%</span>
+        <button id="font-up" class="ghost font-btn" type="button" aria-label="Increase font size">A+</button>
+      </div>
+    </div>
+    <button id="scroll-top-fab" class="scroll-top-fab hidden" type="button" title="Back to top" aria-label="Back to top">↑</button>
+    <section id="debug-drawer" class="debug-drawer hidden">
+      <div class="debug-header">
+        <strong>Debug Log</strong>
+        <button id="debug-close"><span class="btn-icon">✕</span>Close</button>
+      </div>
+      <div class="debug-actions">
+        <button id="copy-debug-log"><span class="btn-icon">📋</span>Copy Log</button>
+        <button id="clear-debug-log"><span class="btn-icon">🧹</span>Clear</button>
+      </div>
+      <pre id="debug-log"></pre>
+    </section>
+
+    <div id="files-read-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal files-read-modal" role="dialog" aria-modal="true" aria-labelledby="files-read-modal-title" aria-describedby="files-read-modal-body">
+        <h3 id="files-read-modal-title">Files</h3>
+        <p id="files-read-modal-body"></p>
+        <div id="files-read-filters" class="files-read-filters">
+          <div class="files-filter-group" aria-label="Location filters">
+            <div class="files-filter-group-title">Location</div>
+            <label class="files-filter-toggle"><input id="files-filter-core" type="checkbox" /><span>Standard</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-scenario" type="checkbox" /><span>Scenario</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-c3x" type="checkbox" /><span>C3X</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-external" type="checkbox" /><span>External</span></label>
+          </div>
+          <div class="files-filter-group" aria-label="File type filters">
+            <div class="files-filter-group-title">File Type</div>
+            <label class="files-filter-toggle"><input id="files-filter-type-config-ini" type="checkbox" /><span>Config INI</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-type-animation-ini" type="checkbox" /><span>Animation INI</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-type-text" type="checkbox" /><span>Text</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-type-biq" type="checkbox" /><span>BIQ</span></label>
+          </div>
+          <div class="files-filter-group" aria-label="Status filters">
+            <div class="files-filter-group-title">Status</div>
+            <label class="files-filter-toggle"><input id="files-filter-status-new" type="checkbox" /><span>New</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-status-changed" type="checkbox" /><span>Changed</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-status-unchanged" type="checkbox" /><span>Unchanged</span></label>
+            <label class="files-filter-toggle"><input id="files-filter-status-risk" type="checkbox" /><span>Warning</span></label>
+          </div>
+        </div>
+        <div class="files-read-search-wrap">
+          <input id="files-read-search" class="files-read-search-input app-search-input" type="search" placeholder="Search files by name, path, scope, type, status..." />
+        </div>
+        <ul id="files-read-list" class="files-read-list"></ul>
+        <div class="confirm-modal-actions">
+          <button id="files-read-close" class="ghost" type="button"><span class="btn-icon">✕</span>Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="file-diff-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal file-diff-modal" role="dialog" aria-modal="true" aria-labelledby="file-diff-modal-title" aria-describedby="file-diff-modal-body">
+        <h3 id="file-diff-modal-title">File Changes</h3>
+        <p id="file-diff-modal-body"></p>
+        <pre id="file-diff-content" class="file-diff-content"></pre>
+        <div class="confirm-modal-actions">
+          <button id="file-diff-close" class="ghost" type="button"><span class="btn-icon">✕</span>Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="save-toast" class="save-toast hidden" aria-live="polite">
+      <div class="save-toast-shell">
+        <button id="save-toast-button" class="save-toast-button" type="button" aria-label="Show save details">
+          <span id="save-toast-icon" class="save-toast-icon" aria-hidden="true"></span>
+          <span class="save-toast-copy">
+            <span id="save-toast-title" class="save-toast-title">Saving files...</span>
+            <span id="save-toast-body" class="save-toast-body">Preparing write plan</span>
+          </span>
+        </button>
+        <button id="save-toast-dismiss" class="save-toast-dismiss" type="button" aria-label="Dismiss save notification">✕</button>
+      </div>
+    </div>
+
+    <div id="save-progress-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal save-progress-modal" role="dialog" aria-modal="true" aria-labelledby="save-progress-modal-title" aria-describedby="save-progress-modal-body">
+        <h3 id="save-progress-modal-title">Save Details</h3>
+        <p id="save-progress-modal-body"></p>
+        <div id="save-progress-meta" class="save-progress-meta">
+          <div class="save-progress-meta-row">
+            <span id="save-progress-step" class="save-progress-step">Preparing...</span>
+            <span id="save-progress-percent" class="save-progress-percent">0%</span>
+          </div>
+          <div class="save-progress-bar" aria-hidden="true">
+            <div id="save-progress-bar-fill" class="save-progress-bar-fill"></div>
+          </div>
+        </div>
+        <div id="save-progress-rollback" class="save-progress-rollback hidden"></div>
+        <div id="save-progress-results" class="save-progress-results hidden">
+          <div class="save-progress-results-head">
+            <span id="save-progress-results-title" class="save-progress-results-title">Saved Files</span>
+            <span id="save-progress-results-count" class="save-progress-results-count"></span>
+          </div>
+          <ul id="save-progress-results-list" class="save-progress-results-list"></ul>
+        </div>
+        <div class="confirm-modal-actions">
+          <button id="save-progress-close" class="ghost" type="button"><span class="btn-icon">✕</span>Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay hidden" aria-live="polite">
+      <div class="loading-card">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <p id="loading-text">Loading configs...</p>
+      </div>
+    </div>
+
+    <div id="unsaved-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="unsaved-modal-title" aria-describedby="unsaved-modal-body">
+        <h3 id="unsaved-modal-title">Unsaved Changes</h3>
+        <p id="unsaved-modal-body">You have unsaved changes.</p>
+        <div class="confirm-modal-actions">
+          <button id="unsaved-save-continue" class="secondary" type="button">Save and Continue</button>
+          <button id="unsaved-discard" class="ghost" type="button">Discard Changes</button>
+          <button id="unsaved-cancel" class="ghost" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="undo-all-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal undo-all-modal" role="dialog" aria-modal="true" aria-labelledby="undo-all-modal-title" aria-describedby="undo-all-modal-body">
+        <div class="undo-all-modal-hero">
+          <div class="undo-all-modal-icon" aria-hidden="true">↺</div>
+          <div class="undo-all-modal-head">
+            <h3 id="undo-all-modal-title">Undo All Unsaved Changes</h3>
+            <p id="undo-all-modal-body">Are you sure you want to undo all of your unsaved changes? This will remove your unsaved changes and return everything to the last saved or loaded state.</p>
+          </div>
+        </div>
+        <div class="confirm-modal-actions">
+          <button id="undo-all-modal-cancel" class="ghost" type="button"><span class="btn-icon">✕</span>Keep Editing</button>
+          <button id="undo-all-modal-confirm" class="danger" type="button"><span class="btn-icon">↺</span>Undo All</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="delete-scenario-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal delete-scenario-modal" role="dialog" aria-modal="true" aria-labelledby="delete-scenario-modal-title" aria-describedby="delete-scenario-modal-body">
+        <div class="undo-all-modal-hero delete-scenario-modal-hero">
+          <div class="undo-all-modal-icon delete-scenario-modal-icon" aria-hidden="true">🗑</div>
+          <div class="undo-all-modal-head">
+            <h3 id="delete-scenario-modal-title">Delete Scenario</h3>
+            <p id="delete-scenario-modal-body">This permanently deletes the current scenario files from disk.</p>
+          </div>
+        </div>
+        <div id="delete-scenario-modal-name" class="delete-scenario-modal-name"></div>
+        <div class="delete-scenario-modal-warning">
+          Type the exact scenario name below before delete is enabled.
+        </div>
+        <label class="entity-field delete-scenario-confirm-field">
+          <span>Type Scenario Name</span>
+          <input id="delete-scenario-modal-input" type="text" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="delete-scenario-modal-match-note" class="delete-scenario-modal-match-note"></div>
+        <div id="delete-scenario-modal-paths" class="delete-scenario-modal-paths"></div>
+        <div class="confirm-modal-actions">
+          <button id="delete-scenario-modal-cancel" class="ghost" type="button"><span class="btn-icon">✕</span>Keep Scenario</button>
+          <button id="delete-scenario-modal-confirm" class="danger" type="button" disabled><span class="btn-icon">🗑</span>Delete Scenario</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="scenario-search-folder-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal scenario-search-folder-modal" role="dialog" aria-modal="true" aria-labelledby="scenario-search-folder-modal-title" aria-describedby="scenario-search-folder-modal-body">
+        <div class="scenario-search-folder-modal-hero">
+          <div class="scenario-search-folder-modal-icon" aria-hidden="true">⚠</div>
+          <div class="scenario-search-folder-modal-head">
+            <h3 id="scenario-search-folder-modal-title">Change Scenario Search Folder</h3>
+            <p id="scenario-search-folder-modal-body">This repoints the scenario to a different content root.</p>
+          </div>
+        </div>
+        <div id="scenario-search-folder-modal-target" class="scenario-search-folder-modal-target"></div>
+        <ul class="scenario-search-folder-modal-list">
+          <li>The scenario reloads immediately.</li>
+          <li>Civs, Techs, Resources, text, art, and save targets rebuild from the new folder.</li>
+          <li>Other unsaved edits may be lost.</li>
+        </ul>
+        <div class="confirm-modal-actions">
+          <button id="scenario-search-folder-modal-cancel" class="ghost" type="button"><span class="btn-icon">✕</span>Keep Current Folder</button>
+          <button id="scenario-search-folder-modal-confirm" class="danger" type="button"><span class="btn-icon">↻</span>Reload Scenario</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="entity-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal entity-modal" role="dialog" aria-modal="true" aria-labelledby="entity-modal-title" aria-describedby="entity-modal-body">
+        <h3 id="entity-modal-title">Manage Entry</h3>
+        <p id="entity-modal-body"></p>
+        <div id="entity-modal-content" class="entity-modal-content"></div>
+        <div class="confirm-modal-actions">
+          <button id="entity-modal-cancel" class="ghost" type="button">Cancel</button>
+          <button id="entity-modal-confirm" class="secondary" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="global-search-overlay" class="global-search-overlay hidden" aria-hidden="true">
+      <div class="global-search-panel" role="dialog" aria-modal="true" aria-label="Jump to tab, entry, or field">
+        <div class="global-search-head">
+          <input id="global-search-input" class="app-search-input global-search-input" type="search" placeholder="Jump to tab, entry, or field..." />
+          <span class="global-search-shortcut">Esc to close</span>
+        </div>
+        <div id="global-search-results" class="global-search-results"></div>
+      </div>
+    </div>
+
+    <div class="app-version">BETA R27.0</div>
+
+    <div id="about-modal-overlay" class="confirm-modal-overlay hidden" aria-hidden="true">
+      <div class="confirm-modal about-modal" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
+        <h3 id="about-modal-title">Civ 3 | C3X Modern Configuration Manager</h3>
+        <p class="about-version">BETA R27.0</p>
+        <p class="about-desc">A modern editor for Civilization III Conquests and C3X global and scenario settings.</p>
+        <p class="about-colophon">Developed by <a href="https://forums.civfanatics.com/members/instafluff.349796/" target="_blank" rel="noopener noreferrer">@instafluff</a> and AI, with AI writing most code and tests, and Instafluff reviewing code, guiding feature development, UI design, and core logic. This app is essentially a compendium built from decades of accumulated knowledge and hard work by the Civ 3 CivFanatics community, and would not be possible had they not graciously open-sourced code and shared with the community.</p>
+        <h4 class="about-thanks-heading">Special Thanks</h4>
+        <ul class="about-thanks-list">
+          <li>
+            <strong><a href="https://forums.civfanatics.com/members/flintlock.51488/" target="_blank" rel="noopener noreferrer">@Flintlock</a></strong> the legend. Without whom this would not exist.
+          </li>
+          <li>
+            <strong><a href="https://forums.civfanatics.com/members/haluu.195079/" target="_blank" rel="noopener noreferrer">@Haluu</a></strong> for extensive help, testing, feedback, kindness, as well as the remarkable <a href="https://forums.civfanatics.com/resources/tides-of-crimson-v2-0-full.28857/" target="_blank" rel="noopener noreferrer">Tides of Crimson mod</a>, which served as a crucial test case and source of sample data for development, debugging, and source of inspiration.
+          </li>
+          <li>
+            <strong><a href="https://forums.civfanatics.com/members/quintillus.112675/" target="_blank" rel="noopener noreferrer">@Quintillus</a></strong> for the remarkable
+            <a href="https://forums.civfanatics.com/threads/quintillus-cross-platform-civ3-editor.377358/" target="_blank" rel="noopener noreferrer">Civ 3 Cross Platform Editor</a>,
+            without which this app would not be possible. The Editor served as a consistent Rosetta Stone for making sense of the BIQ file and how to organize this information for users.
+          </li>
+          <li>
+            <strong><a href="https://forums.civfanatics.com/members/puppeteer.36357/" target="_blank" rel="noopener noreferrer">@Puppeteer</a></strong>, whose Go-language BIQ decompressor
+            <a href="https://github.com/JimOfLeisure/c3sat" target="_blank" rel="noopener noreferrer">c3sat</a>
+            served as the basis for our port.
+          </li>
+          <li>
+            <strong><a href="https://forums.civfanatics.com/members/cyber-dreyk.37320/" target="_blank" rel="noopener noreferrer">@Cyber Dreyk</a></strong>, whose
+            <a href="https://forums.civfanatics.com/threads/civ3flcedit-civilization-iii-animation-viewer-editor.91253/" target="_blank" rel="noopener noreferrer">Civ3FlcEdit</a>
+            program served as the technical guide for our FLC translations and interpreter.
+          </li>
+          <li>
+            <strong><a href="https://forums.civfanatics.com/members/moeniir.4015/" target="_blank" rel="noopener noreferrer">@Moerniir</a></strong>, whose <a href="https://forums.civfanatics.com/threads/make-your-own-units-flicster-version-1-0-1-build-18-now-available.10208/" target="_blank" rel="noopener noreferrer">FLICster</a> app guided how we show FLCs to users.
+          </li>
+        </ul>
+        <div class="confirm-modal-actions">
+          <button id="about-close" class="ghost" type="button"><span class="btn-icon">✕</span>Close</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-credit" aria-label="App credits">
+      Made with <span class="app-credit-heart" aria-hidden="true">♥</span> by
+      <a href="https://forums.civfanatics.com/members/instafluff.349796/" target="_blank" rel="noopener noreferrer">@instafluff</a>,
+      AI, and <button id="about-btn" class="app-credit-community-btn" type="button" aria-label="About this app">the CivFanatics Community</button>
+    </footer>
+
+    <script src="./civilopediaText.js"></script>
+    <script src="./mapEditorCore.js"></script>
+    <script src="./mapGeneratorCore.js"></script>
+    <script src="./referenceIdentity.js"></script>
+    <script src="./c3xBaseManifest.js"></script>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
