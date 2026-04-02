@@ -5,6 +5,44 @@
 
 const { BiqReader, BiqWriter } = require('./biqBuffer');
 const log = require('../log');
+const iconv = require('iconv-lite');
+
+let currentBiqTextEncoding = 'windows-1252';
+
+function normalizeBiqTextEncoding(value) {
+  const raw = String(value || 'windows-1252').trim().toLowerCase();
+  const aliases = {
+    'windows-1252': 'windows-1252',
+    cp1252: 'windows-1252',
+    latin1: 'windows-1252',
+    'windows-1251': 'windows-1251',
+    cp1251: 'windows-1251',
+    gbk: 'gbk',
+    cp936: 'gbk',
+    big5: 'big5',
+    cp950: 'big5',
+    shift_jis: 'shift_jis',
+    'shift-jis': 'shift_jis',
+    sjis: 'shift_jis',
+    cp932: 'shift_jis',
+    'euc-kr': 'euc-kr',
+    euc_kr: 'euc-kr',
+    cp949: 'euc-kr',
+    utf8: 'utf8',
+    'utf-8': 'utf8'
+  };
+  return aliases[raw] || 'windows-1252';
+}
+
+function decodeBiqTextBytes(buffer, encoding = currentBiqTextEncoding) {
+  const codec = normalizeBiqTextEncoding(encoding);
+  if (codec === 'windows-1252') return iconv.decode(buffer, 'win1252');
+  return iconv.decode(buffer, codec);
+}
+
+function setCurrentBiqTextEncoding(encoding) {
+  currentBiqTextEncoding = normalizeBiqTextEncoding(encoding);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -13,11 +51,11 @@ const log = require('../log');
 function readStr(buf, offset, len) {
   let end = 0;
   while (end < len && buf[offset + end] !== 0) end++;
-  return buf.subarray(offset, offset + end).toString('latin1');
+  return decodeBiqTextBytes(buf.subarray(offset, offset + end));
 }
 
 function writeStr(w, str, len) {
-  w.writeString(str || '', len, 'latin1');
+  w.writeString(str || '', len, currentBiqTextEncoding);
 }
 
 function lines(pairs) {
@@ -42,6 +80,7 @@ class BiqIO {
     this.minorVersion = opts.minorVersion || 8;
     this.numEras = opts.numEras || 3;
     this.mapWidth = opts.mapWidth || 0;
+    this.textEncoding = normalizeBiqTextEncoding(opts.textEncoding);
     this.isConquests = this.versionTag.startsWith('BIC') && this.majorVersion === 12;
     this.isPTWPlus = this.versionTag.startsWith('BIC') && this.majorVersion >= 2;
   }
@@ -2431,8 +2470,9 @@ function findSectionTag(buf, tag, fromOff) {
   return null;
 }
 
-function parseAllSections(buf) {
+function parseAllSections(buf, options = {}) {
   if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf);
+  setCurrentBiqTextEncoding(options && options.textEncoding);
 
   // Parse header
   if (buf.length < 736) return { ok: false, error: 'Buffer too small for BIQ header' };
@@ -2449,12 +2489,12 @@ function parseAllSections(buf) {
   let biqDescription = '';
   let end = 32;
   while (end < 672 && buf[end] !== 0) end++;
-  biqDescription = buf.subarray(32, end).toString('latin1');
+  biqDescription = decodeBiqTextBytes(buf.subarray(32, end));
   let titleEnd = 672;
   while (titleEnd < 736 && buf[titleEnd] !== 0) titleEnd++;
-  const biqTitle = buf.subarray(672, titleEnd).toString('latin1');
+  const biqTitle = decodeBiqTextBytes(buf.subarray(672, titleEnd));
 
-  const io = new BiqIO({ versionTag, majorVersion, minorVersion });
+  const io = new BiqIO({ versionTag, majorVersion, minorVersion, textEncoding: currentBiqTextEncoding });
   const sections = [];
   let searchFrom = 736;
 
@@ -3826,14 +3866,14 @@ function setMapSectionsOnParsed(parsed, uiSections) {
 // applyEdits: apply SET/ADD/COPY/DELETE edits to a buffer, return new buffer
 // ---------------------------------------------------------------------------
 
-function applyEdits(buf, edits) {
+function applyEdits(buf, edits, options = {}) {
   if (!Array.isArray(edits) || edits.length === 0) {
     return { ok: true, buffer: buf, applied: 0, skipped: 0, warning: '' };
   }
 
   log.debug('BiqApplyEdits', `applyEdits: ${edits.length} edit(s) — buf size ${buf ? buf.length : 0}`);
 
-  const parsed = parseAllSections(buf);
+  const parsed = parseAllSections(buf, options);
   if (!parsed.ok) {
     log.error('BiqApplyEdits', `parseAllSections failed: ${parsed.error || 'unknown'}`);
     return { ok: false, error: parsed.error || 'Failed to parse BIQ' };

@@ -1,3 +1,9 @@
+* RELEASE 27.1
+- Added localized encoding support for Civilopedia/PediaIcons/diplomacy text files and BIQ-backed names/labels, including auto-detection for common Civ3 code pages, same-encoding save preservation, and a global UI override when auto-detect is ambiguous.
+- Unit and improvement prerequisite resource dropdowns now include bonus resources, matching Quintillus Editor instead of restricting those BIQ pickers to luxury and strategic resources.
+- Reduced a renderer leak that could accumulate global click handlers while reopening Civilopedia editors and picker widgets, which could lead to random white-screen renderer failures during typing/clicking/dragging on Windows.
+- Added explicit renderer crash and hang logging plus a recovery message when the Electron content process dies, so white-screen failures are now easier to diagnose.
+
 * RELEASE 27.0
 - Changed `New -> Create from Base Game` to use a typed `Search Folder` field instead of a browse-only folder path, matching the copy-scenario flow and defaulting that field from the scenario name.
 - Fixed base-scenario creation so pre-R28 C3X installs no longer fail when `default.tile_animations.txt` is absent; tile animations are now treated as optional during scenario creation.

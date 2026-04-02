@@ -263,6 +263,29 @@ function createWindow() {
       event.preventDefault();
     }
   });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    const reason = String(details && details.reason || 'unknown');
+    const exitCode = Number.isFinite(Number(details && details.exitCode)) ? Number(details.exitCode) : null;
+    const extra = exitCode == null ? '' : ` (exit code ${exitCode})`;
+    log.error('renderer', `Process gone: ${reason}${extra}`);
+    if (!win.isDestroyed()) {
+      dialog.showMessageBox(win, {
+        type: 'error',
+        buttons: ['OK'],
+        defaultId: 0,
+        noLink: true,
+        title: APP_NAME,
+        message: 'The app content crashed and had to stop rendering.',
+        detail: 'Unsaved changes in the current session may be lost. Use View > Reload to restore the window. If this keeps happening, switch to Safe performance mode and send the debug log.'
+      }).catch(() => {});
+    }
+  });
+  win.webContents.on('unresponsive', () => {
+    log.warn('renderer', 'Renderer became unresponsive.');
+  });
+  win.webContents.on('responsive', () => {
+    log.info('renderer', 'Renderer became responsive again.');
+  });
 
   // Forward main-process log entries to the renderer's in-app debug log panel.
   win.webContents.on('did-finish-load', () => {

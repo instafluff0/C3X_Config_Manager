@@ -1,6 +1,17 @@
 'use strict';
 
 // Little-endian binary reader and writer for Civ3 BIQ files.
+const iconv = require('iconv-lite');
+
+function decodeStringBuffer(buffer, encoding = 'latin1') {
+  if (encoding === 'latin1') return buffer.toString('latin1');
+  return iconv.decode(buffer, encoding);
+}
+
+function encodeStringBuffer(text, encoding = 'latin1') {
+  if (encoding === 'latin1') return Buffer.from(String(text || ''), 'latin1');
+  return iconv.encode(String(text || ''), encoding);
+}
 
 /**
  * BiqReader wraps a Buffer and provides sequential little-endian reads.
@@ -70,7 +81,7 @@ class BiqReader {
     // Find first null byte
     let end = 0;
     while (end < raw.length && raw[end] !== 0) end++;
-    return raw.slice(0, end).toString(encoding);
+    return decodeStringBuffer(raw.slice(0, end), encoding);
   }
 
   readTag() {
@@ -145,7 +156,7 @@ class BiqWriter {
    * @param {string} [encoding='latin1']
    */
   writeString(str, len, encoding = 'latin1') {
-    const src = Buffer.from(String(str || ''), encoding);
+    const src = encodeStringBuffer(str, encoding);
     const buf = Buffer.alloc(len, 0);
     src.copy(buf, 0, 0, Math.min(src.length, len));
     this._chunks.push(buf);

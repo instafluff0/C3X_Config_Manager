@@ -4,6 +4,7 @@
 This repository is an Electron app (`Civ 3 | C3X Modern Configuration Manager`) for editing C3X/Civ3 configuration and scenario files safely.
 
 This document is the agent contract: keep it short, durable, and implementation-focused.
+Assume all users are on Windows.
 Do not turn this file into a changelog.
 
 ## Scope and Mode Model
@@ -70,7 +71,12 @@ Behavior follows C3X parsing semantics from `injected_code.c`.
 - Persist settings in Electron `userData/settings.json`.
 - Infer missing paths on startup; auto-load when inferred/saved paths are valid.
 - Path inputs are browse/select driven to avoid typo drift.
+
+# Changelog
 - Agent-authored changes must add a concise entry to `changelog.txt`; keep release notes there, not in this file.
+- Check the current version in package.json and make sure that corresponds to your changelog entry.
+- If you don't see the package.json version in the changelog, add it to the top.
+- Never add a changelog version (e.g. "R28.1") that is higher than the version shown in package.json.
 
 ## Civilopedia/Pedia Ground Truth
 - Standard Game read-only sources are layered:

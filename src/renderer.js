@@ -304,6 +304,38 @@ const previewScratch = {
   canvas: null,
   ctx: null
 };
+const outsideClickDismissers = new Set();
+let outsideClickDismissersWired = false;
+
+function pruneOutsideClickDismissers() {
+  outsideClickDismissers.forEach((entry) => {
+    if (!entry || !entry.root || !entry.root.isConnected || typeof entry.onOutsideClick !== 'function') {
+      outsideClickDismissers.delete(entry);
+    }
+  });
+}
+
+function ensureOutsideClickDismissersWired() {
+  if (outsideClickDismissersWired) return;
+  document.addEventListener('click', (ev) => {
+    pruneOutsideClickDismissers();
+    outsideClickDismissers.forEach((entry) => {
+      if (!entry || !entry.root || !entry.root.isConnected) return;
+      if (entry.root.contains(ev.target)) return;
+      try {
+        entry.onOutsideClick(ev);
+      } catch (_err) {}
+    });
+  });
+  outsideClickDismissersWired = true;
+}
+
+function registerOutsideClickDismiss(root, onOutsideClick) {
+  if (!root || typeof onOutsideClick !== 'function') return;
+  ensureOutsideClickDismissersWired();
+  const entry = { root, onOutsideClick };
+  outsideClickDismissers.add(entry);
+}
 
 function setPreviewCache(key, value) {
   const cacheKey = String(key || '');
@@ -13811,13 +13843,6 @@ function shouldRestrictResourceReferenceOptions(tabKey, baseKey) {
   return false;
 }
 
-function isLuxuryOrStrategicResourceOption(opt) {
-  const entry = opt && opt.entry;
-  const typeField = getBiqFieldByBaseKey(entry, 'type');
-  const typeValue = parseIntFromDisplayValue(typeField && typeField.value);
-  return typeValue === 1 || typeValue === 2;
-}
-
 // Builds a Map<string(biqIndex), string(unitName)> for all unit entries, extended
 // with aliases that cover strategy-map duplicates.
 //
@@ -13874,9 +13899,6 @@ function getReferenceOptionsForField(tabKey, field) {
     return names.map((name, idx) => ({ value: String(idx), label: `${name} (${idx})` }));
   }
   const options = makeIndexOptionsForTab(target);
-  if (target === 'resources' && shouldRestrictResourceReferenceOptions(tabKey, base)) {
-    return options.filter(isLuxuryOrStrategicResourceOption);
-  }
   return options;
 }
 
@@ -14278,8 +14300,8 @@ function createReferencePicker(config) {
     if (menu.classList.contains('hidden')) return;
     hydrateVisibleOptionThumbs(20);
   });
-  document.addEventListener('click', (ev) => {
-    if (!wrap.contains(ev.target)) menu.classList.add('hidden');
+  registerOutsideClickDismiss(wrap, () => {
+    menu.classList.add('hidden');
   });
   return wrap;
 }
@@ -14351,8 +14373,8 @@ function createColorSlotPicker(config) {
     ev.preventDefault();
     menu.classList.toggle('hidden');
   });
-  document.addEventListener('click', (ev) => {
-    if (!wrap.contains(ev.target)) menu.classList.add('hidden');
+  registerOutsideClickDismiss(wrap, () => {
+    menu.classList.add('hidden');
   });
   return wrap;
 }
@@ -14562,8 +14584,8 @@ function createUnitIconIndexPicker(currentValue, onSelect, entry = null) {
     if (opening && !gridBuilt) await buildGrid();
     if (opening) renderVisibleIcons();
   });
-  document.addEventListener('click', (ev) => {
-    if (!wrap.contains(ev.target)) menu.classList.add('hidden');
+  registerOutsideClickDismiss(wrap, () => {
+    menu.classList.add('hidden');
   });
 
   wrap.appendChild(previewHost);
@@ -16629,10 +16651,8 @@ function createCivilopediaEditorBlock({ entry, fieldKey, titleText, sourceMeta, 
     }
   });
 
-  document.addEventListener('click', (ev) => {
-    if (!block.contains(ev.target)) {
-      linkPanel.classList.add('hidden');
-    }
+  registerOutsideClickDismiss(block, () => {
+    linkPanel.classList.add('hidden');
   });
 
   if (state.civilopediaPreviewVisible[editorKey]) {

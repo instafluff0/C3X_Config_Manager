@@ -49,8 +49,8 @@ const SECTION_TITLES = {
  * @param {Buffer} buffer - Inflated (decompressed) BIQ buffer
  * @returns {{ ok: true, sections: Array } | { ok: false, error: string }}
  */
-function parseBiqBuffer(buffer) {
-  const parsed = parseAllSections(buffer);
+function parseBiqBuffer(buffer, options = {}) {
+  const parsed = parseAllSections(buffer, options);
   if (!parsed.ok) return { ok: false, error: parsed.error || 'BIQ parse failed' };
 
   const { sections, io } = parsed;
@@ -92,8 +92,8 @@ function parseBiqBuffer(buffer) {
  * @param {{ buffer: Buffer, edits: Array }} opts
  * @returns {{ ok: true, buffer: Buffer, applied: number, skipped: number, warning: string } | { ok: false, error: string }}
  */
-function applyBiqEdits({ buffer, edits }) {
-  return applyEdits(buffer, edits);
+function applyBiqEdits({ buffer, edits, textEncoding }) {
+  return applyEdits(buffer, edits, { textEncoding });
 }
 
 module.exports = { parseBiqBuffer, applyBiqEdits };

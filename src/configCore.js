@@ -158,8 +158,8 @@ function readUInt32LESafe(buf, offset) {
   return buf.readUInt32LE(offset);
 }
 
-function toBiqString(buf, start, end) {
-  const out = buf.subarray(start, end).toString('latin1');
+function toBiqString(buf, start, end, encoding = 'windows-1252') {
+  const out = decodeTextBuffer(buf.subarray(start, end), resolveAutoTextEncoding(encoding));
   const nullPos = out.indexOf('\0');
   return (nullPos >= 0 ? out.slice(0, nullPos) : out).trim();
 }
@@ -1145,9 +1145,9 @@ function normalizeBridgeSections(parsed) {
   return { ok: true, sections: enrichBridgeSections(sections) };
 }
 
-function runBiqBridgeOnInflatedBuffer({ buffer }) {
+function runBiqBridgeOnInflatedBuffer({ buffer, textEncoding }) {
   try {
-    const jsResult = jsParseBiqBuffer(buffer);
+    const jsResult = jsParseBiqBuffer(buffer, { textEncoding: resolveAutoTextEncoding(textEncoding) });
     if (jsResult.ok) return normalizeBridgeSections(jsResult);
     return { ok: false, error: jsResult.error || 'BIQ parse failed' };
   } catch (err) {
@@ -1294,13 +1294,14 @@ function parseSectionRecords(buf, section, versionTag, majorVersion) {
   return records;
 }
 
-function parseBiqHeaderMetadata(buf) {
+function parseBiqHeaderMetadata(buf, options = {}) {
+  const textEncoding = resolveAutoTextEncoding(options && options.textEncoding);
   const versionTag = readBiqTag(buf, 0);
   const verHeaderTag = readBiqTag(buf, 4);
   const majorVersion = readUInt32LESafe(buf, 24) || 0;
   const minorVersion = readUInt32LESafe(buf, 28) || 0;
-  const biqDescription = toBiqString(buf, 32, 672);
-  const biqTitle = toBiqString(buf, 672, 736);
+  const biqDescription = toBiqString(buf, 32, 672, textEncoding);
+  const biqTitle = toBiqString(buf, 672, 736, textEncoding);
   const numHeaders = readUInt32LESafe(buf, 8) || 0;
   const headerLength = readUInt32LESafe(buf, 12) || 0;
   return {
@@ -1315,8 +1316,9 @@ function parseBiqHeaderMetadata(buf) {
   };
 }
 
-function parseBiqSectionsFromBuffer(buf) {
-  const header = parseBiqHeaderMetadata(buf);
+function parseBiqSectionsFromBuffer(buf, options = {}) {
+  const textEncoding = resolveAutoTextEncoding(options && options.textEncoding);
+  const header = parseBiqHeaderMetadata(buf, { textEncoding });
   const {
     versionTag,
     verHeaderTag,
@@ -1369,7 +1371,8 @@ function parseBiqSectionsFromBuffer(buf) {
       startOffset: def.startOffset,
       endOffset,
       byteLength: endOffset - def.startOffset,
-      parseMode: def.mode
+      parseMode: def.mode,
+      textEncoding
     };
     section.records = parseSectionRecords(buf, section, versionTag, majorVersion);
     section.recordsTruncated = section.count > section.records.length;
@@ -1592,7 +1595,7 @@ function resolveBiqPath({ mode, civ3Path, scenarioPath }) {
   return path.join(root, 'Conquests', 'conquests.biq');
 }
 
-function loadBiqTab({ mode, civ3Path, scenarioPath }) {
+function loadBiqTab({ mode, civ3Path, scenarioPath, textEncoding = 'windows-1252' }) {
   const biqPath = resolveBiqPath({ mode, civ3Path, scenarioPath });
   if (!biqPath) {
     log.warn('loadBiqTab', mode === 'scenario'
@@ -1623,8 +1626,9 @@ function loadBiqTab({ mode, civ3Path, scenarioPath }) {
     };
   }
   try {
-    const headerMeta = parseBiqHeaderMetadata(inflated.buffer);
-    const bridged = runBiqBridgeOnInflatedBuffer({ buffer: inflated.buffer });
+    const resolvedTextEncoding = resolveAutoTextEncoding(textEncoding);
+    const headerMeta = parseBiqHeaderMetadata(inflated.buffer, { textEncoding: resolvedTextEncoding });
+    const bridged = runBiqBridgeOnInflatedBuffer({ buffer: inflated.buffer, textEncoding: resolvedTextEncoding });
     if (bridged.ok) {
       log.info('loadBiqTab', `Parsed via JS bridge — ${bridged.sections && bridged.sections.length} section(s)`);
       return {
@@ -1634,6 +1638,7 @@ function loadBiqTab({ mode, civ3Path, scenarioPath }) {
         sourcePath: biqPath,
         compressedSource: inflated.compressed,
         decompressorPath: inflated.decompressorPath || '',
+        textEncoding: resolvedTextEncoding,
         ...headerMeta,
         sections: bridged.sections,
         bridgeMode: true
@@ -1641,7 +1646,7 @@ function loadBiqTab({ mode, civ3Path, scenarioPath }) {
     }
 
     log.warn('loadBiqTab', `JS bridge failed (${bridged.error || 'unknown'}) — falling back to binary parser`);
-    const parsed = parseBiqSectionsFromBuffer(inflated.buffer);
+    const parsed = parseBiqSectionsFromBuffer(inflated.buffer, { textEncoding: resolvedTextEncoding });
     log.info('loadBiqTab', `Parsed via binary parser — ${parsed.sections && parsed.sections.length} section(s)`);
     return {
       title: 'BIQ',
@@ -1650,6 +1655,7 @@ function loadBiqTab({ mode, civ3Path, scenarioPath }) {
       sourcePath: biqPath,
       compressedSource: inflated.compressed,
       decompressorPath: inflated.decompressorPath || '',
+      textEncoding: resolvedTextEncoding,
       bridgeMode: false,
       bridgeError: bridged.error || '',
       ...parsed
@@ -1725,6 +1731,11 @@ function decodeWindows1252Buffer(buffer) {
 function normalizeTextFileEncoding(value) {
   const raw = String(value == null ? DEFAULT_TEXT_FILE_ENCODING : value).trim().toLowerCase();
   return TEXT_FILE_ENCODING_ALIASES[raw] || DEFAULT_TEXT_FILE_ENCODING;
+}
+
+function resolveAutoTextEncoding(value, fallback = 'windows-1252') {
+  const normalized = normalizeTextFileEncoding(value);
+  return normalized === 'auto' ? fallback : normalized;
 }
 
 function mapTextEncodingToCodec(value) {
@@ -5125,6 +5136,7 @@ function loadBundle(payload) {
   const civ3Path = payload.civ3Path || '';
   const scenarioPath = payload.scenarioPath || '';
   const textFileEncoding = normalizeTextFileEncoding(payload.textFileEncoding);
+  const initialBiqTextEncoding = resolveAutoTextEncoding(textFileEncoding);
   const scenarioSearchFolderOverride = normalizeScenarioSearchFolderOverride(payload.scenarioSearchFolderOverride);
   log.setCiv3Root(civ3Path);
   log.info('loadBundle', `mode=${mode}`);
@@ -5132,7 +5144,7 @@ function loadBundle(payload) {
   if (!civ3Path) log.warn('loadBundle', 'civ3Path is empty — reference data will not load.');
   if (mode === 'scenario' && !scenarioPath) log.warn('loadBundle', 'scenarioPath is empty in scenario mode.');
   try {
-    const biqTab = loadBiqTab({ mode, civ3Path, scenarioPath });
+    let biqTab = loadBiqTab({ mode, civ3Path, scenarioPath, textEncoding: initialBiqTextEncoding });
     const scenarioContext = mode === 'scenario'
       ? deriveScenarioPathContext({
         scenarioPath,
@@ -5165,6 +5177,7 @@ function loadBundle(payload) {
       scenarioPath: scenarioDir,
       scenarioInputPath: scenarioPath,
       textFileEncoding,
+      biqTextEncoding: String(biqTab && biqTab.textEncoding || initialBiqTextEncoding),
       scenarioSearchPaths,
       scenarioWriteRoots: scenarioContext.writableRoots,
       tabs: {}
@@ -5188,13 +5201,26 @@ function loadBundle(payload) {
       readPaths.add(path.resolve(String(biqTab.sourcePath)));
     }
 
-    const referenceTabs = buildReferenceTabs(civ3Path, {
+    let referenceTabs = buildReferenceTabs(civ3Path, {
       mode,
       scenarioPath: mode === 'scenario' ? (scenarioContext.contentWriteRoot || scenarioDir) : scenarioDir,
       scenarioPaths: scenarioSearchPaths,
       biqTab,
       textFileEncoding
     });
+    const resolvedBiqTextEncoding = inferBiqTextEncodingFromReferenceTabs(referenceTabs, textFileEncoding);
+    if (resolvedBiqTextEncoding !== String(biqTab && biqTab.textEncoding || '')) {
+      biqTab = loadBiqTab({ mode, civ3Path, scenarioPath, textEncoding: resolvedBiqTextEncoding });
+      bundle.biq = biqTab;
+      bundle.biqTextEncoding = String(biqTab && biqTab.textEncoding || resolvedBiqTextEncoding);
+      referenceTabs = buildReferenceTabs(civ3Path, {
+        mode,
+        scenarioPath: mode === 'scenario' ? (scenarioContext.contentWriteRoot || scenarioDir) : scenarioDir,
+        scenarioPaths: scenarioSearchPaths,
+        biqTab,
+        textFileEncoding
+      });
+    }
     for (const spec of REFERENCE_TAB_SPECS) {
       if (referenceTabs[spec.key]) {
         if (spec.key === 'terrainPedia' || spec.key === 'workerActions') continue;
@@ -5569,6 +5595,21 @@ function resolveScenarioTextWriteEncoding({ targetPath, sourcePath, explicitEnco
     encoding: preferred === 'auto' ? fallbackEncoding : preferred,
     bom: false
   };
+}
+
+function inferBiqTextEncodingFromReferenceTabs(referenceTabs, preferredEncoding = DEFAULT_TEXT_FILE_ENCODING) {
+  const preferred = normalizeTextFileEncoding(preferredEncoding);
+  if (preferred !== 'auto') return preferred;
+  const sourceDetails = (((referenceTabs || {}).civilizations || {}).sourceDetails || {});
+  const candidates = [
+    sourceDetails.civilopediaScenarioEncoding,
+    sourceDetails.civilopediaActiveEncoding,
+    sourceDetails.pediaIconsScenarioEncoding,
+    sourceDetails.pediaIconsActiveEncoding,
+    sourceDetails.diplomacyScenarioEncoding,
+    sourceDetails.diplomacyActiveEncoding
+  ].map((value) => normalizeTextFileEncoding(value)).filter((value) => value && value !== 'auto');
+  return candidates[0] || 'windows-1252';
 }
 
 function writeAtomicFileSync(targetPath, data, options = {}) {
@@ -5949,7 +5990,9 @@ function buildSavePlan(payload) {
   const civ3Path = payload.civ3Path || '';
   const scenarioPath = payload.scenarioPath || '';
   const textFileEncoding = normalizeTextFileEncoding(payload.textFileEncoding);
-  const biqTab = loadBiqTab({ mode, civ3Path, scenarioPath });
+  const civSourceDetails = (((payload.tabs || {}).civilizations || {}).sourceDetails || {});
+  const inferredBiqTextEncoding = inferBiqTextEncodingFromReferenceTabs({ civilizations: { sourceDetails: civSourceDetails } }, textFileEncoding);
+  const biqTab = loadBiqTab({ mode, civ3Path, scenarioPath, textEncoding: inferredBiqTextEncoding });
   const pendingSearchFolderOverride = mode === 'scenario'
     ? getPendingScenarioSearchFolderOverride(payload.tabs || {})
     : null;
@@ -6123,6 +6166,7 @@ function buildSavePlan(payload) {
         biqPath: scenarioPath,
         edits: allBiqEdits,
         civ3Path,
+        textEncoding: inferredBiqTextEncoding,
         outputPath: path.join(
           os.tmpdir(),
           `c3x-biq-save-stage-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.biq`
@@ -7918,7 +7962,7 @@ function buildScenarioUnitIniEditResult({ targetPath, sourcePath, actions, origi
   }
 }
 
-function applyBiqReferenceEdits({ biqPath, edits, civ3Path, outputPath }) {
+function applyBiqReferenceEdits({ biqPath, edits, civ3Path, outputPath, textEncoding = 'windows-1252' }) {
   if (!biqPath || !Array.isArray(edits) || edits.length === 0) {
     return { ok: true, applied: 0, skipped: 0, warning: '', outputPath: '' };
   }
@@ -7939,7 +7983,7 @@ function applyBiqReferenceEdits({ biqPath, edits, civ3Path, outputPath }) {
 
   const finalOutputPath = String(outputPath || biqPath).trim() || biqPath;
   try {
-    const jsResult = jsApplyBiqEdits({ buffer: inflated.buffer, edits });
+    const jsResult = jsApplyBiqEdits({ buffer: inflated.buffer, edits, textEncoding: resolveAutoTextEncoding(textEncoding) });
     if (!jsResult.ok) {
       log.error('BiqSave', `applyBiqReferenceEdits: jsApplyBiqEdits failed — ${jsResult.error || 'unknown'}`);
       return { ok: false, error: jsResult.error || 'BIQ edit failed' };

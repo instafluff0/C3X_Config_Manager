@@ -47,12 +47,9 @@ function loadReferenceOptionHelpers(bundle) {
   const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
   const sourceText = fs.readFileSync(rendererPath, 'utf8');
   const functionNames = [
-    'parseIntFromDisplayValue',
     'normalizeRuleLookupKey',
-    'getBiqFieldByBaseKey',
     'makeIndexOptionsForTab',
     'shouldRestrictResourceReferenceOptions',
-    'isLuxuryOrStrategicResourceOption',
     'getReferenceOptionsForField'
   ];
   const sandbox = {
@@ -117,7 +114,7 @@ function makeEntry(civilopediaKey, biqIndex) {
   return { civilopediaKey, biqIndex, name: civilopediaKey, biqFields: [] };
 }
 
-test('improvement resource dropdown excludes bonus resources', () => {
+test('improvement resource dropdown includes bonus resources', () => {
   const bundle = {
     tabs: {
       resources: {
@@ -133,10 +130,10 @@ test('improvement resource dropdown excludes bonus resources', () => {
 
   const options = getReferenceOptionsForField('improvements', { baseKey: 'reqresource1' });
 
-  assert.deepEqual(options.map((opt) => opt.entry.civilopediaKey), ['GOOD_SILK', 'GOOD_IRON']);
+  assert.deepEqual(options.map((opt) => opt.entry.civilopediaKey), ['GOOD_CATTLE', 'GOOD_SILK', 'GOOD_IRON']);
 });
 
-test('unit resource dropdown excludes bonus resources for all required resource slots', () => {
+test('unit resource dropdown includes bonus resources for all required resource slots', () => {
   const bundle = {
     tabs: {
       resources: {
@@ -152,10 +149,10 @@ test('unit resource dropdown excludes bonus resources for all required resource 
 
   const options = getReferenceOptionsForField('units', { baseKey: 'requiredresource3' });
 
-  assert.deepEqual(options.map((opt) => opt.entry.civilopediaKey), ['GOOD_DYES', 'GOOD_COAL']);
+  assert.deepEqual(options.map((opt) => opt.entry.civilopediaKey), ['GOOD_WHEAT', 'GOOD_DYES', 'GOOD_COAL']);
 });
 
-test('resource filtering stays scoped to improvements and units resource prerequisites', () => {
+test('resource options remain unfiltered for improvements and units resource prerequisites', () => {
   const bundle = {
     tabs: {
       resources: {
@@ -177,6 +174,10 @@ test('resource filtering stays scoped to improvements and units resource prerequ
   assert.equal(shouldRestrictResourceReferenceOptions('resources', 'prerequisite'), false);
   assert.deepEqual(
     makeIndexOptionsForTab('resources').map((opt) => opt.entry.civilopediaKey),
+    ['GOOD_GAME', 'GOOD_SPICES', 'GOOD_OIL']
+  );
+  assert.deepEqual(
+    getReferenceOptionsForField('improvements', { baseKey: 'reqresource1' }).map((opt) => opt.entry.civilopediaKey),
     ['GOOD_GAME', 'GOOD_SPICES', 'GOOD_OIL']
   );
   assert.deepEqual(
