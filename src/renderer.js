@@ -6019,8 +6019,10 @@ function makeInputForBaseRow(row, onChange, options = {}) {
       createDefaultItem: () => ({ name: '', amount: '' }),
       lazyItemMount: true,
       eagerItemCount: 6,
-      itemPlaceholderMinHeight: 50,
+      itemPlaceholderMinHeight: 76,
       buildItemNode: (item, api) => {
+        const line = document.createElement('div');
+        line.className = 'structured-card';
         const block = document.createElement('div');
         block.className = 'kv-row';
         const unitOpts = getNamedReferenceOptionsForTab('units');
@@ -6057,7 +6059,8 @@ function makeInputForBaseRow(row, onChange, options = {}) {
           onChange(serializeNameAmountItems(api.items));
         });
         block.appendChild(del);
-        return block;
+        line.appendChild(block);
+        return line;
       }
     });
     return editor.wrap;
@@ -29418,10 +29421,6 @@ function renderSectionTab(tab, tabKey) {
         issueBadge.title = 'This district has validation warnings.';
         itemBtn.appendChild(issueBadge);
       }
-      attachRichTooltip(
-        itemBtn,
-        `${formatSourceInfo(getSectionTabSourceMeta(tab), 'C3X Config')}\nDisplay Name: ${districtDisplay.primary}\nInternal Name: ${districtDisplay.secondary || '(same as display)'}\nTooltip: ${districtDisplay.tooltip || '(not set)'}`
-      );
     } else if (tabKey === 'wonders' || tabKey === 'naturalWonders') {
       const hasSectionIssue = showQualityWarnings && (
         (tabKey === 'wonders' && !!(wonderIssueIndexes && wonderIssueIndexes.has(sectionIndex)))

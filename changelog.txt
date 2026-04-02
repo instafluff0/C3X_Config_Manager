@@ -1,4 +1,6 @@
 * RELEASE 27.1
+- Adjusted `C3X -> Unit Limits` row spacing to use the same card-style item layout as `Production Perfume`, making those structured entries visually consistent.
+- Removed the hover tooltip from Districts tab entries in the left-hand district list so hovering those rows no longer shows source/file metadata.
 - Improved C3X base-tab responsiveness in large scenarios by moving continuous base-field typing onto the existing grouped undo-session path instead of taking a full editable-bundle snapshot on every keystroke; dirty tracking, save output, and discrete undo actions still use the same save/restore pipeline.
 - Changed the C3X base tab to construct offscreen row editors lazily as they approach the viewport, reducing initial tab-open cost on large scenario configs without changing validation, save, or undo state tracking.
 - Added an Era dropdown next to search in the Techs and Units tabs, populated from the loaded scenario/base-game ERAS data and off by default; Units filter by the era of their required tech.
