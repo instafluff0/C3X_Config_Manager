@@ -2101,6 +2101,23 @@ function getLatestUndoSnapshot() {
   return state.undoHistory[state.undoHistory.length - 1];
 }
 
+function cloneUndoSnapshotEntry(entry) {
+  if (entry == null) return null;
+  if (typeof entry === 'string') return String(entry);
+  if (typeof entry === 'object') return JSON.parse(JSON.stringify(entry));
+  return String(entry);
+}
+
+function cloneUndoHistoryEntries(entries) {
+  return Array.isArray(entries) ? entries.map((entry) => cloneUndoSnapshotEntry(entry)) : [];
+}
+
+function getUndoSnapshotSignature(snapshot) {
+  if (snapshot == null) return 'null';
+  if (typeof snapshot === 'string') return `full:${snapshot}`;
+  return `obj:${JSON.stringify(snapshot)}`;
+}
+
 function snapshotTabs() {
   if (!state.bundle || !state.bundle.tabs) return 'null';
   return snapshotEditableTabsFromBundle(state.bundle);
@@ -2115,19 +2132,47 @@ function snapshotEditableTabsFromBundle(bundle) {
   return JSON.stringify(editableTabs);
 }
 
-function rememberUndoSnapshot() {
+function snapshotSelectedEditableTabs(tabKeys) {
+  if (!state.bundle || !state.bundle.tabs) return 'null';
+  const keys = Array.isArray(tabKeys) ? tabKeys.map((key) => String(key || '').trim()).filter(Boolean) : [];
+  if (keys.length === 0) return 'null';
+  const tabs = {};
+  keys.forEach((key) => {
+    if (state.bundle.tabs[key]) tabs[key] = JSON.parse(JSON.stringify(state.bundle.tabs[key]));
+  });
+  if (Object.keys(tabs).length === 0) return 'null';
+  return {
+    kind: 'partial-tabs',
+    tabs
+  };
+}
+
+function getUndoSnapshotForKey(key = '') {
+  const normalizedKey = String(key || '').trim().toUpperCase();
+  if (normalizedKey.startsWith('BASE:')) {
+    return snapshotSelectedEditableTabs(['base']);
+  }
+  return snapshotTabs();
+}
+
+function rememberUndoSnapshotForKey(key = '') {
   if (state.isRendering || !state.trackDirty || state.suppressDirtyUntilInteraction) return;
-  const snapshot = snapshotTabs();
-  if (snapshot !== getLatestUndoSnapshot()) {
-    state.undoHistory.push(snapshot);
+  const snapshot = getUndoSnapshotForKey(key);
+  if (getUndoSnapshotSignature(snapshot) !== getUndoSnapshotSignature(getLatestUndoSnapshot())) {
+    state.undoHistory.push(cloneUndoSnapshotEntry(snapshot));
     refreshDirtyUi();
   }
 }
 
+function rememberUndoSnapshot() {
+  rememberUndoSnapshotForKey('');
+}
+
 function pushUndoSnapshot(snapshot) {
-  const normalized = String(snapshot || '');
-  if (!normalized || normalized === 'null') return;
-  if (normalized !== getLatestUndoSnapshot()) {
+  const normalized = cloneUndoSnapshotEntry(snapshot);
+  const signature = getUndoSnapshotSignature(normalized);
+  if (!normalized || signature === 'full:null' || signature === 'null') return;
+  if (signature !== getUndoSnapshotSignature(getLatestUndoSnapshot())) {
     state.undoHistory.push(normalized);
     refreshDirtyUi();
   }
@@ -2142,7 +2187,7 @@ function beginTrackedEditSession(key, initialValue) {
   if (!sessionKey) return;
   if (state.editSessionByKey[sessionKey]) return;
   state.editSessionByKey[sessionKey] = {
-    snapshot: snapshotTabs(),
+    snapshot: getUndoSnapshotForKey(sessionKey),
     initialValue: normalizeEditSessionValue(initialValue)
   };
 }
@@ -2241,6 +2286,15 @@ function parseSnapshotTabs(snapshotText) {
   } catch (_err) {
     return {};
   }
+}
+
+function extractUndoSnapshotTabs(snapshot) {
+  if (snapshot == null) return {};
+  if (typeof snapshot === 'string') return parseSnapshotTabs(snapshot);
+  if (snapshot && typeof snapshot === 'object' && snapshot.kind === 'partial-tabs' && snapshot.tabs && typeof snapshot.tabs === 'object') {
+    return JSON.parse(JSON.stringify(snapshot.tabs));
+  }
+  return {};
 }
 
 function getCleanTabsObject() {
@@ -5657,7 +5711,20 @@ function makeNamedListTokenEditor(config) {
   return wrap;
 }
 
-function makeInputForBaseRow(row, onChange) {
+function makeInputForBaseRow(row, onChange, options = {}) {
+  const baseUndoKey = String((options && options.undoKey) || `BASE:${String(row && row.key || '').trim()}`);
+  const captureBaseUndoSnapshot = () => rememberUndoSnapshotForKey(baseUndoKey);
+  const wireBaseGroupedUndo = (input, getValue = null, config = {}) => {
+    if (!input) return;
+    const resolveValue = typeof getValue === 'function'
+      ? getValue
+      : (() => String(input.value || ''));
+    wireGroupedUndoSession(input, {
+      key: baseUndoKey,
+      getValue: resolveValue,
+      commitOnChange: config.commitOnChange === true
+    });
+  };
   if (row.key === 'limit_railroad_movement') {
     const wrap = document.createElement('div');
     wrap.className = 'structured-list';
@@ -5698,7 +5765,8 @@ function makeInputForBaseRow(row, onChange) {
       if (modeValue === 'capped') wrap.appendChild(input);
     };
 
-    input.addEventListener('input', recalc);
+    wireBaseGroupedUndo(input);
+    input.addEventListener('input', () => recalc());
     rerender();
     return wrap;
   }
@@ -5768,10 +5836,14 @@ function makeInputForBaseRow(row, onChange) {
       }
     };
 
-    inputA.addEventListener('input', recalc);
-    inputB.addEventListener('input', recalc);
-    inputC.addEventListener('input', recalc);
-    inputD.addEventListener('input', recalc);
+    wireBaseGroupedUndo(inputA);
+    wireBaseGroupedUndo(inputB);
+    wireBaseGroupedUndo(inputC);
+    wireBaseGroupedUndo(inputD);
+    inputA.addEventListener('input', () => recalc());
+    inputB.addEventListener('input', () => recalc());
+    inputC.addEventListener('input', () => recalc());
+    inputD.addEventListener('input', () => recalc());
     rerender();
     return wrap;
   }
@@ -5788,14 +5860,15 @@ function makeInputForBaseRow(row, onChange) {
         const input = document.createElement('input');
         input.placeholder = 'item';
         input.value = item;
+        wireBaseGroupedUndo(input);
         input.addEventListener('input', () => {
           items[idx] = input.value;
-          onChange(serializeStructuredEntries(items));
+          onChange(serializeStructuredEntries(items), { captureUndo: false });
         });
         const del = document.createElement('button');
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
-      rememberUndoSnapshot();
+          captureBaseUndoSnapshot();
           items.splice(idx, 1);
           if (items.length === 0) items.push('');
           onChange(serializeStructuredEntries(items));
@@ -5808,7 +5881,7 @@ function makeInputForBaseRow(row, onChange) {
       const add = document.createElement('button');
       add.textContent = 'Add Item';
       add.addEventListener('click', () => {
-    rememberUndoSnapshot();
+        captureBaseUndoSnapshot();
         items.push('');
         onChange(serializeStructuredEntries(items));
         rerender();
@@ -5830,14 +5903,75 @@ function makeInputForBaseRow(row, onChange) {
     return editor;
   }
 
-  if (row.key === 'unit_limits') {
+  const buildIncrementalStructuredListEditor = ({
+    className = 'structured-list',
+    items,
+    createDefaultItem,
+    addLabel = 'Add Item',
+    buildItemNode
+  }) => {
     const wrap = document.createElement('div');
-    wrap.className = 'structured-list';
+    wrap.className = className;
+    const itemsHost = document.createElement('div');
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.textContent = addLabel;
+    const nodeByItem = new Map();
+
+    const api = {
+      items,
+      rerenderItem(item) {
+        if (!item) return;
+        const oldNode = nodeByItem.get(item) || null;
+        const newNode = buildItemNode(item, api);
+        nodeByItem.set(item, newNode);
+        if (oldNode && oldNode.parentNode === itemsHost) {
+          itemsHost.replaceChild(newNode, oldNode);
+        } else {
+          itemsHost.appendChild(newNode);
+        }
+      },
+      addItem(item) {
+        if (!item) return;
+        items.push(item);
+        const node = buildItemNode(item, api);
+        nodeByItem.set(item, node);
+        itemsHost.appendChild(node);
+      },
+      removeItem(item) {
+        const idx = items.indexOf(item);
+        if (idx >= 0) items.splice(idx, 1);
+        const node = nodeByItem.get(item);
+        if (node && node.parentNode === itemsHost) {
+          itemsHost.removeChild(node);
+        }
+        nodeByItem.delete(item);
+        if (items.length === 0) {
+          api.addItem(createDefaultItem());
+        }
+      }
+    };
+
+    items.forEach((item) => {
+      const node = buildItemNode(item, api);
+      nodeByItem.set(item, node);
+      itemsHost.appendChild(node);
+    });
+    addBtn.addEventListener('click', () => {
+      api.addItem(createDefaultItem());
+    });
+    wrap.appendChild(itemsHost);
+    wrap.appendChild(addBtn);
+    return { wrap, addBtn, api };
+  };
+
+  if (row.key === 'unit_limits') {
     let items = parseNameAmountItems(row.value);
     if (items.length === 0) items = [{ name: '', amount: '' }];
-    const rerender = () => {
-      wrap.innerHTML = '';
-      items.forEach((item, idx) => {
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ name: '', amount: '' }),
+      buildItemNode: (item, api) => {
         const block = document.createElement('div');
         block.className = 'kv-row';
         const unitOpts = getNamedReferenceOptionsForTab('units');
@@ -5852,43 +5986,32 @@ function makeInputForBaseRow(row, onChange) {
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
-            items[idx].name = normalized === '-1' ? '' : normalized;
-            onChange(serializeNameAmountItems(items));
-            rerender();
+            item.name = normalized === '-1' ? '' : normalized;
+            onChange(serializeNameAmountItems(api.items));
           }
         });
         block.appendChild(unitPicker);
         const formula = document.createElement('input');
         formula.placeholder = 'Limit formula (e.g. 3, 1 per-city, 5 + 2 per-city)';
         formula.value = item.amount;
+        wireBaseGroupedUndo(formula);
         formula.addEventListener('input', () => {
-          items[idx].amount = formula.value;
-          onChange(serializeNameAmountItems(items));
+          item.amount = formula.value;
+          onChange(serializeNameAmountItems(api.items), { captureUndo: false });
         });
         block.appendChild(formula);
         const del = document.createElement('button');
         del.type = 'button';
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
-          items.splice(idx, 1);
-          if (items.length === 0) items.push({ name: '', amount: '' });
-          onChange(serializeNameAmountItems(items));
-          rerender();
+          api.removeItem(item);
+          onChange(serializeNameAmountItems(api.items));
         });
         block.appendChild(del);
-        wrap.appendChild(block);
-      });
-      const add = document.createElement('button');
-      add.type = 'button';
-      add.textContent = 'Add Item';
-      add.addEventListener('click', () => {
-        items.push({ name: '', amount: '' });
-        rerender();
-      });
-      wrap.appendChild(add);
-    };
-    rerender();
-    return wrap;
+        return block;
+      }
+    });
+    return editor.wrap;
   }
 
   if (row.key === 'civ_aliases_by_era') {
@@ -5905,9 +6028,10 @@ function makeInputForBaseRow(row, onChange) {
         const source = document.createElement('input');
         source.placeholder = 'Original civ name/adjective';
         source.value = item.source || '';
+        wireBaseGroupedUndo(source);
         source.addEventListener('input', () => {
           items[idx].source = source.value;
-          onChange(serializeCivAliasesByEra(items));
+          onChange(serializeCivAliasesByEra(items), { captureUndo: false });
         });
         block.appendChild(source);
         const sourceDl = attachSuggestions(source, civSuggestions);
@@ -5920,10 +6044,11 @@ function makeInputForBaseRow(row, onChange) {
           const era = document.createElement('input');
           era.placeholder = `Era ${eraIdx + 1} replacement`;
           era.value = rep;
+          wireBaseGroupedUndo(era);
           era.addEventListener('input', () => {
             if (!Array.isArray(items[idx].replacements)) items[idx].replacements = ['', '', '', ''];
             items[idx].replacements[eraIdx] = era.value;
-            onChange(serializeCivAliasesByEra(items));
+            onChange(serializeCivAliasesByEra(items), { captureUndo: false });
           });
           grid.appendChild(era);
           const eraDl = attachSuggestions(era, civSuggestions);
@@ -5969,9 +6094,10 @@ function makeInputForBaseRow(row, onChange) {
         const source = document.createElement('input');
         source.placeholder = 'Original leader name';
         source.value = item.source || '';
+        wireBaseGroupedUndo(source);
         source.addEventListener('input', () => {
           items[idx].source = source.value;
-          onChange(serializeLeaderAliasesByEra(items));
+          onChange(serializeLeaderAliasesByEra(items), { captureUndo: false });
         });
         block.appendChild(source);
         const sourceDl = attachSuggestions(source, leaderSuggestions);
@@ -5986,11 +6112,12 @@ function makeInputForBaseRow(row, onChange) {
           const name = document.createElement('input');
           name.placeholder = `Era ${eraIdx + 1} leader`;
           name.value = String(rep && rep.name || '');
+          wireBaseGroupedUndo(name);
           name.addEventListener('input', () => {
             if (!Array.isArray(items[idx].replacements)) items[idx].replacements = [];
             if (!items[idx].replacements[eraIdx]) items[idx].replacements[eraIdx] = { name: '', gender: '', title: '' };
             items[idx].replacements[eraIdx].name = name.value;
-            onChange(serializeLeaderAliasesByEra(items));
+            onChange(serializeLeaderAliasesByEra(items), { captureUndo: false });
           });
           rowWrap.appendChild(name);
           const nameDl = attachSuggestions(name, leaderSuggestions);
@@ -6013,11 +6140,12 @@ function makeInputForBaseRow(row, onChange) {
           const title = document.createElement('input');
           title.placeholder = 'Title (optional)';
           title.value = String(rep && rep.title || '');
+          wireBaseGroupedUndo(title);
           title.addEventListener('input', () => {
             if (!Array.isArray(items[idx].replacements)) items[idx].replacements = [];
             if (!items[idx].replacements[eraIdx]) items[idx].replacements[eraIdx] = { name: '', gender: '', title: '' };
             items[idx].replacements[eraIdx].title = title.value;
-            onChange(serializeLeaderAliasesByEra(items));
+            onChange(serializeLeaderAliasesByEra(items), { captureUndo: false });
           });
           rowWrap.appendChild(title);
           repWrap.appendChild(rowWrap);
@@ -6078,8 +6206,6 @@ function makeInputForBaseRow(row, onChange) {
   }
 
   if (row.key === 'production_perfume' || row.key === 'perfume_specs' || row.key === 'technology_perfume' || row.key === 'government_perfume') {
-    const wrap = document.createElement('div');
-    wrap.className = 'structured-list';
     const improvementOptions = getNamedReferenceOptionsForTab('improvements');
     const unitOptions = getNamedReferenceOptionsForTab('units');
     const techOptions = getNamedReferenceOptionsForTab('technologies');
@@ -6140,9 +6266,16 @@ function makeInputForBaseRow(row, onChange) {
       return { name: String(item.name || ''), amount: String(item.amount || ''), kind };
     });
     if (items.length === 0) items = [{ name: '', amount: '' }];
-    const rerender = () => {
-      wrap.innerHTML = '';
-      items.forEach((item, idx) => {
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => {
+        return row.key === 'technology_perfume'
+          ? { name: '', amount: '', kind: 'technologies' }
+          : row.key === 'government_perfume'
+            ? { name: '', amount: '', kind: 'governments' }
+            : { name: '', amount: '', kind: inferProductionKind('') };
+      },
+      buildItemNode: (item, api) => {
         const line = document.createElement('div');
         line.className = 'structured-card';
         const rowTop = document.createElement('div');
@@ -6178,60 +6311,44 @@ function makeInputForBaseRow(row, onChange) {
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
-            items[idx].name = normalized === '-1' ? '' : normalized;
+            item.name = normalized === '-1' ? '' : normalized;
             if (row.key === 'production_perfume' || row.key === 'perfume_specs') {
-              items[idx].kind = inferProductionKind(items[idx].name);
+              item.kind = inferProductionKind(item.name);
             }
-            onChange(serializeNameAmountItems(items));
-            rerender();
+            onChange(serializeNameAmountItems(api.items));
           }
         });
         rowTop.appendChild(picker);
         const amount = document.createElement('input');
         amount.placeholder = 'amount (e.g. 20 or -50%)';
         amount.value = item.amount;
+        wireBaseGroupedUndo(amount);
         amount.addEventListener('input', () => {
-          items[idx].amount = amount.value;
-          onChange(serializeNameAmountItems(items));
+          item.amount = amount.value;
+          onChange(serializeNameAmountItems(api.items), { captureUndo: false });
         });
         rowTop.appendChild(amount);
         const del = document.createElement('button');
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
-          items.splice(idx, 1);
-          if (items.length === 0) items.push({ name: '', amount: '', kind: 'improvements' });
-          onChange(serializeNameAmountItems(items));
-          rerender();
+          api.removeItem(item);
+          onChange(serializeNameAmountItems(api.items));
         });
         rowTop.appendChild(del);
         line.appendChild(rowTop);
-        wrap.appendChild(line);
-      });
-      const add = document.createElement('button');
-      add.textContent = 'Add Item';
-      add.addEventListener('click', () => {
-        const nextKind = row.key === 'technology_perfume'
-          ? 'technologies'
-          : row.key === 'government_perfume'
-            ? 'governments'
-            : inferProductionKind('');
-        items.push({ name: '', amount: '', kind: nextKind });
-        rerender();
-      });
-      wrap.appendChild(add);
-    };
-    rerender();
-    return wrap;
+        return line;
+      }
+    });
+    return editor.wrap;
   }
 
   if (row.key === 'work_area_improvements') {
-    const wrap = document.createElement('div');
-    wrap.className = 'structured-list';
     let items = parseNameAmountItems(row.value);
     if (items.length === 0) items = [{ name: '', amount: '' }];
-    const rerender = () => {
-      wrap.innerHTML = '';
-      items.forEach((item, idx) => {
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ name: '', amount: '' }),
+      buildItemNode: (item, api) => {
         const line = document.createElement('div');
         line.className = 'structured-card';
         const buildingOpts = getNamedReferenceOptionsForTab('improvements');
@@ -6246,43 +6363,32 @@ function makeInputForBaseRow(row, onChange) {
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
-            items[idx].name = normalized === '-1' ? '' : normalized;
-            onChange(serializeNameAmountItems(items));
-            rerender();
+            item.name = normalized === '-1' ? '' : normalized;
+            onChange(serializeNameAmountItems(api.items));
           }
         });
         line.appendChild(buildingPicker);
         const amount = document.createElement('input');
         amount.placeholder = 'radius / bonus (e.g. 3 or 2 extra)';
         amount.value = item.amount;
+        wireBaseGroupedUndo(amount);
         amount.addEventListener('input', () => {
-          items[idx].amount = amount.value;
-          onChange(serializeNameAmountItems(items));
+          item.amount = amount.value;
+          onChange(serializeNameAmountItems(api.items), { captureUndo: false });
         });
         line.appendChild(amount);
         const del = document.createElement('button');
         del.type = 'button';
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
-          items.splice(idx, 1);
-          if (items.length === 0) items.push({ name: '', amount: '' });
-          onChange(serializeNameAmountItems(items));
-          rerender();
+          api.removeItem(item);
+          onChange(serializeNameAmountItems(api.items));
         });
         line.appendChild(del);
-        wrap.appendChild(line);
-      });
-      const add = document.createElement('button');
-      add.type = 'button';
-      add.textContent = 'Add Item';
-      add.addEventListener('click', () => {
-        items.push({ name: '', amount: '' });
-        rerender();
-      });
-      wrap.appendChild(add);
-    };
-    rerender();
-    return wrap;
+        return line;
+      }
+    });
+    return editor.wrap;
   }
 
   if (row.key === 'great_wall_auto_build_wonder_name') {
@@ -6310,13 +6416,12 @@ function makeInputForBaseRow(row, onChange) {
   }
 
   if (row.key === 'building_prereqs_for_units') {
-    const wrap = document.createElement('div');
-    wrap.className = 'structured-list';
     let items = parseBuildingPrereqItems(row.value);
     if (items.length === 0) items = [{ building: '', units: [] }];
-    const rerender = () => {
-      wrap.innerHTML = '';
-      items.forEach((item, idx) => {
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ building: '', units: [] }),
+      buildItemNode: (item, api) => {
         const block = document.createElement('div');
         block.className = 'structured-card';
         const buildingOpts = getNamedReferenceOptionsForTab('improvements');
@@ -6331,9 +6436,8 @@ function makeInputForBaseRow(row, onChange) {
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
-            items[idx].building = normalized === '-1' ? '' : normalized;
-            onChange(serializeBuildingPrereqItems(items));
-            rerender();
+            item.building = normalized === '-1' ? '' : normalized;
+            onChange(serializeBuildingPrereqItems(api.items));
           }
         });
         block.appendChild(buildingPicker);
@@ -6341,8 +6445,8 @@ function makeInputForBaseRow(row, onChange) {
           tabKey: 'units',
           values: Array.isArray(item.units) ? item.units : [],
           onValuesChange: (nextValues) => {
-            items[idx].units = nextValues;
-            onChange(serializeBuildingPrereqItems(items));
+            item.units = nextValues;
+            onChange(serializeBuildingPrereqItems(api.items));
           }
         });
         unitsEditor.classList.add('building-prereq-units');
@@ -6351,24 +6455,14 @@ function makeInputForBaseRow(row, onChange) {
         del.type = 'button';
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
-          items.splice(idx, 1);
-          if (items.length === 0) items.push({ building: '', units: [] });
-          onChange(serializeBuildingPrereqItems(items));
-          rerender();
+          api.removeItem(item);
+          onChange(serializeBuildingPrereqItems(api.items));
         });
         block.appendChild(del);
-        wrap.appendChild(block);
-      });
-      const add = document.createElement('button');
-      add.textContent = 'Add Item';
-      add.addEventListener('click', () => {
-        items.push({ building: '', units: [] });
-        rerender();
-      });
-      wrap.appendChild(add);
-    };
-    rerender();
-    return wrap;
+        return block;
+      }
+    });
+    return editor.wrap;
   }
 
   if (row.key === 'buildings_generating_resources') {
@@ -6380,13 +6474,12 @@ function makeInputForBaseRow(row, onChange) {
       'show-bonus': 'Show Bonus',
       'hide-non-bonus': 'Hide Non-Bonus'
     };
-    const wrap = document.createElement('div');
-    wrap.className = 'structured-list';
     let items = parseBuildingResourceItems(row.value);
     if (items.length === 0) items = [{ building: '', resource: '', flags: [] }];
-    const rerender = () => {
-      wrap.innerHTML = '';
-      items.forEach((item, idx) => {
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ building: '', resource: '', flags: [] }),
+      buildItemNode: (item, api) => {
         const block = document.createElement('div');
         block.className = 'structured-card';
 
@@ -6402,9 +6495,8 @@ function makeInputForBaseRow(row, onChange) {
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
-            items[idx].building = normalized === '-1' ? '' : normalized;
-            onChange(serializeBuildingResourceItems(items));
-            rerender();
+            item.building = normalized === '-1' ? '' : normalized;
+            onChange(serializeBuildingResourceItems(api.items));
           }
         });
         block.appendChild(buildingPicker);
@@ -6421,9 +6513,8 @@ function makeInputForBaseRow(row, onChange) {
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
-            items[idx].resource = normalized === '-1' ? '' : normalized;
-            onChange(serializeBuildingResourceItems(items));
-            rerender();
+            item.resource = normalized === '-1' ? '' : normalized;
+            onChange(serializeBuildingResourceItems(api.items));
           }
         });
         block.appendChild(resourcePicker);
@@ -6432,8 +6523,8 @@ function makeInputForBaseRow(row, onChange) {
           FLAGS,
           Array.isArray(item.flags) ? item.flags : [],
           (nextValues) => {
-            items[idx].flags = nextValues;
-            onChange(serializeBuildingResourceItems(items));
+            item.flags = nextValues;
+            onChange(serializeBuildingResourceItems(api.items));
           },
           'buildings_generating_resources_flags',
           {
@@ -6446,24 +6537,14 @@ function makeInputForBaseRow(row, onChange) {
         const del = document.createElement('button');
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
-          items.splice(idx, 1);
-          if (items.length === 0) items.push({ building: '', resource: '', flags: [] });
-          onChange(serializeBuildingResourceItems(items));
-          rerender();
+          api.removeItem(item);
+          onChange(serializeBuildingResourceItems(api.items));
         });
         block.appendChild(del);
-        wrap.appendChild(block);
-      });
-      const add = document.createElement('button');
-      add.textContent = 'Add Item';
-      add.addEventListener('click', () => {
-        items.push({ building: '', resource: '', flags: [] });
-        rerender();
-      });
-      wrap.appendChild(add);
-    };
-    rerender();
-    return wrap;
+        return block;
+      }
+    });
+    return editor.wrap;
   }
 
   if (isStructuredBaseField(row)) {
@@ -6508,7 +6589,8 @@ function makeInputForBaseRow(row, onChange) {
   const input = document.createElement('input');
   input.type = row.type === 'integer' ? 'number' : 'text';
   input.value = row.value;
-  input.addEventListener('input', () => onChange(input.value));
+  wireBaseGroupedUndo(input);
+  input.addEventListener('input', () => onChange(input.value, { captureUndo: false }));
   return input;
 }
 
@@ -6606,6 +6688,22 @@ function renderBaseTab(tab) {
 
   const table = document.createElement('div');
   table.className = 'base-table';
+  const supportsLazyBaseRowMount = typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function';
+  const baseRowLazyObserver = supportsLazyBaseRowMount
+    ? new window.IntersectionObserver((entries, observer) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const rowEl = entry.target;
+          if (rowEl && typeof rowEl._ensureBaseInputMounted === 'function') {
+            rowEl._ensureBaseInputMounted();
+          }
+          observer.unobserve(rowEl);
+        });
+      }, {
+        root: el.tabContent || null,
+        rootMargin: '550px 0px'
+      })
+    : null;
   const rowElements = [];
   const groups = new Map();
   const baseFieldKeys = new Set((tab.rows || []).map((row) => String(row && row.key || '').trim()).filter(Boolean));
@@ -6738,19 +6836,40 @@ function renderBaseTab(tab) {
     keyWrap.appendChild(createBaseMeta(row, tab.fieldDocs, baseFieldKeys, focusBaseRowByKey));
 
     r.appendChild(keyWrap);
+    const inputHost = document.createElement('div');
+    inputHost.className = 'base-row-input-host';
+    const inputPlaceholder = document.createElement('div');
+    inputPlaceholder.className = 'base-row-input-placeholder';
+    inputPlaceholder.textContent = 'Loading editor...';
+    inputHost.appendChild(inputPlaceholder);
+    r.appendChild(inputHost);
 
-    const input = makeInputForBaseRow(row, (newValue) => {
-      rememberUndoSnapshot();
-      row.value = String(newValue);
-      dirtyBadge.classList.toggle('hidden', !isBaseRowDirty(row));
-      refreshSourceBadge();
-      setDirty(true);
-    });
-    if (row.type === 'boolean' && input instanceof Element) {
-      const check = input.querySelector('input[type="checkbox"]');
-      if (check) enableBooleanRowToggle(r, check);
-    }
-    r.appendChild(input);
+    let inputMounted = false;
+    const ensureInputMounted = () => {
+      if (inputMounted) return;
+      inputMounted = true;
+      inputHost.innerHTML = '';
+      const input = makeInputForBaseRow(row, (newValue, changeOptions = null) => {
+        if (!changeOptions || changeOptions.captureUndo !== false) {
+          rememberUndoSnapshotForKey(`BASE:${String(row && row.key || '').trim()}`);
+        }
+        row.value = String(newValue);
+        dirtyBadge.classList.toggle('hidden', !isBaseRowDirty(row));
+        refreshSourceBadge();
+        setDirty(true);
+      }, {
+        undoKey: `BASE:${String(row && row.key || '').trim()}`
+      });
+      if (row.type === 'boolean' && input instanceof Element) {
+        const check = input.querySelector('input[type="checkbox"]');
+        if (check) enableBooleanRowToggle(r, check);
+      }
+      inputHost.appendChild(input);
+      r.classList.add('base-row-mounted');
+    };
+    r._ensureBaseInputMounted = ensureInputMounted;
+    r.addEventListener('focusin', ensureInputMounted);
+    r.addEventListener('pointerenter', ensureInputMounted, { once: true });
 
     const groupInfo = groups.get(sectionName);
     groupInfo.rowsWrap.appendChild(r);
@@ -6762,6 +6881,12 @@ function renderBaseTab(tab) {
     const releaseSearch = getC3xReleaseSearchTerms(rawKey);
     const searchText = `${rawKey} ${friendlyName} ${docs} ${releaseSearch}`.toLowerCase();
     rowElements.push({ key: rawKey.toLowerCase(), searchText, el: r, group: groupInfo.group });
+
+    if (!baseRowLazyObserver || rowElements.length <= 18) {
+      ensureInputMounted();
+    } else {
+      baseRowLazyObserver.observe(r);
+    }
   }
 
   const applyFilter = () => {
@@ -6776,7 +6901,9 @@ function renderBaseTab(tab) {
       g.group.style.display = hasVisible ? '' : 'none';
     });
   };
-  filterInput.addEventListener('input', applyFilter);
+  filterInput.addEventListener('input', () => {
+    scheduleTabSearchRender('base', applyFilter, { delayMs: 90 });
+  });
   applyFilter();
 
   wrap.appendChild(table);
@@ -29720,9 +29847,7 @@ async function loadBundleAndRender(options = {}) {
     const preserveDirtyState = options && options.preserveDirtyState
       ? {
           cleanSnapshot: String(options.preserveDirtyState.cleanSnapshot || 'null'),
-          undoHistory: Array.isArray(options.preserveDirtyState.undoHistory)
-            ? options.preserveDirtyState.undoHistory.map((entry) => String(entry || 'null'))
-            : []
+          undoHistory: cloneUndoHistoryEntries(options.preserveDirtyState.undoHistory)
         }
       : null;
     const bundle = await window.c3xManager.loadBundle(buildLoadBundlePayload({
@@ -29830,7 +29955,7 @@ async function loadBundleAndRender(options = {}) {
       if (preserveDirtyState) {
         state.cleanSnapshot = preserveDirtyState.cleanSnapshot;
         state.cleanTabsCache = parseSnapshotTabs(preserveDirtyState.cleanSnapshot);
-        state.undoHistory = preserveDirtyState.undoHistory;
+        state.undoHistory = cloneUndoHistoryEntries(preserveDirtyState.undoHistory);
         recomputeDirtyStateFromBundle();
         refreshDirtyUi();
         refreshTabDirtyBadges();
@@ -31250,9 +31375,11 @@ async function restoreEditableSnapshot(targetSnapshot, options = {}) {
   if (!state.bundle) {
     return false;
   }
-  const restoredEditableTabs = parseSnapshotTabs(targetSnapshot);
-  const nextUndoHistory = Array.isArray(options.undoHistory) ? options.undoHistory.slice() : [];
-  const restoredSearchFolder = getScenarioSearchFolderValueFromTabs(restoredEditableTabs);
+  const restoredEditableTabs = extractUndoSnapshotTabs(targetSnapshot);
+  const nextUndoHistory = cloneUndoHistoryEntries(options.undoHistory);
+  const restoredSearchFolder = Object.prototype.hasOwnProperty.call(restoredEditableTabs, 'scenarioSettings')
+    ? getScenarioSearchFolderValueFromTabs(restoredEditableTabs)
+    : getScenarioSearchFolderValueFromTabs(state.bundle && state.bundle.tabs ? state.bundle.tabs : {});
   if (state.settings && state.settings.mode === 'scenario' && state.settings.scenarioPath) {
     state.previewCache.clear();
     await loadBundleAndRender({
@@ -31267,16 +31394,19 @@ async function restoreEditableSnapshot(targetSnapshot, options = {}) {
   }
   const currentTabs = state.bundle && state.bundle.tabs ? state.bundle.tabs : {};
   const mergedTabs = Object.assign({}, currentTabs);
-  EDITABLE_TAB_KEYS.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(restoredEditableTabs, key)) {
-      mergedTabs[key] = restoredEditableTabs[key];
-    } else {
+  const restoredKeys = Object.keys(restoredEditableTabs || {});
+  if (restoredKeys.length === 0) {
+    EDITABLE_TAB_KEYS.forEach((key) => {
       delete mergedTabs[key];
-    }
-  });
+    });
+  } else {
+    restoredKeys.forEach((key) => {
+      if (EDITABLE_TAB_KEYS.includes(key)) mergedTabs[key] = restoredEditableTabs[key];
+    });
+  }
   state.bundle.tabs = mergedTabs;
   state.cleanTabsCache = parseSnapshotTabs(state.cleanSnapshot);
-  state.undoHistory = nextUndoHistory;
+  state.undoHistory = cloneUndoHistoryEntries(nextUndoHistory);
   state.editSessionByKey = {};
   state.civilopediaEditorOpen = {};
   state.civilopediaEditSessionByKey = {};

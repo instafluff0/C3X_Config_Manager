@@ -2388,6 +2388,22 @@ button.danger:hover {
   transition: background-color 0.14s ease;
 }
 
+.base-row-input-host {
+  min-height: 42px;
+}
+
+.base-row-input-placeholder {
+  min-height: 42px;
+  border: 1px dashed rgba(111, 133, 170, 0.35);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(245, 249, 255, 0.9), rgba(238, 244, 252, 0.85));
+  color: #6d7c98;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .base-row:hover {
   background: rgba(238, 244, 255, 0.9);
 }

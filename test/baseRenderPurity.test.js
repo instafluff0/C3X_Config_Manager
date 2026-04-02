@@ -214,3 +214,129 @@ test('C3X source-backed enum readers match renderer and manifest options', () =>
     );
   });
 });
+
+test('C3X base typing uses grouped undo sessions instead of per-keystroke snapshots', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /function makeInputForBaseRow\(row, onChange, options = \{\}\) \{[\s\S]*?wireGroupedUndoSession\(input, \{[\s\S]*?key: baseUndoKey,/,
+    'Base-row inputs should use grouped undo wiring keyed per C3X setting'
+  );
+
+  assert.match(
+    text,
+    /const input = document\.createElement\('input'\);[\s\S]*?wireBaseGroupedUndo\(input\);[\s\S]*?input\.addEventListener\('input', \(\) => onChange\(input\.value, \{ captureUndo: false \}\)\);/,
+    'Plain base text/number inputs should avoid capturing a full undo snapshot on every keystroke'
+  );
+
+  assert.match(
+    text,
+    /const input = makeInputForBaseRow\(row, \(newValue, changeOptions = null\) => \{[\s\S]*?if \(!changeOptions \|\| changeOptions\.captureUndo !== false\) \{\s*rememberUndoSnapshotForKey\(`BASE:/m,
+    'Base-row change application should still capture undo snapshots for discrete non-grouped actions'
+  );
+});
+
+test('C3X base undo snapshots are scoped to the base tab and restore supports partial snapshots', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /function getUndoSnapshotForKey\(key = ''\) \{[\s\S]*?if \(normalizedKey\.startsWith\('BASE:'\)\) \{\s*return snapshotSelectedEditableTabs\(\['base'\]\);/m,
+    'Base undo capture should snapshot only the base tab instead of every editable tab'
+  );
+
+  assert.match(
+    text,
+    /function extractUndoSnapshotTabs\(snapshot\) \{[\s\S]*?snapshot\.kind === 'partial-tabs'[\s\S]*?snapshot\.tabs/,
+    'Undo restore should understand partial-tab snapshot entries'
+  );
+
+  assert.match(
+    text,
+    /const restoredSearchFolder = Object\.prototype\.hasOwnProperty\.call\(restoredEditableTabs, 'scenarioSettings'\)[\s\S]*?getScenarioSearchFolderValueFromTabs\(state\.bundle && state\.bundle\.tabs \? state\.bundle\.tabs : \{\}\);/,
+    'Partial undo restores should preserve the current scenario search folder when that tab was not part of the snapshot'
+  );
+});
+
+test('long-list C3X base editors avoid full local rerenders on add/remove', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  const sections = [
+    {
+      start: "if (row.key === 'unit_limits') {",
+      end: "if (row.key === 'civ_aliases_by_era') {"
+    },
+    {
+      start: "if (row.key === 'production_perfume' || row.key === 'perfume_specs' || row.key === 'technology_perfume' || row.key === 'government_perfume') {",
+      end: "if (row.key === 'work_area_improvements') {"
+    },
+    {
+      start: "if (row.key === 'work_area_improvements') {",
+      end: "if (row.key === 'great_wall_auto_build_wonder_name') {"
+    },
+    {
+      start: "if (row.key === 'building_prereqs_for_units') {",
+      end: "if (row.key === 'buildings_generating_resources') {"
+    },
+    {
+      start: "if (row.key === 'buildings_generating_resources') {",
+      end: "if (isStructuredBaseField(row)) {"
+    }
+  ];
+
+  sections.forEach(({ start, end }) => {
+    const startIdx = text.indexOf(start);
+    const endIdx = text.indexOf(end);
+    assert.ok(startIdx >= 0 && endIdx > startIdx, `Expected renderer section between ${start} and ${end}`);
+    const sectionText = text.slice(startIdx, endIdx);
+    assert.doesNotMatch(
+      sectionText,
+      /wrap\.innerHTML\s*=\s*''/,
+      'Long-list base editors should update incrementally instead of rebuilding the whole field UI'
+    );
+  });
+});
+
+test('C3X base rows lazily mount offscreen editors', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /const supportsLazyBaseRowMount = typeof window !== 'undefined' && typeof window\.IntersectionObserver === 'function';/,
+    'Base tab should detect IntersectionObserver support for lazy editor mounting'
+  );
+
+  assert.match(
+    text,
+    /const inputPlaceholder = document\.createElement\('div'\);[\s\S]*?inputPlaceholder\.className = 'base-row-input-placeholder';[\s\S]*?inputPlaceholder\.textContent = 'Loading editor\.\.\.';/,
+    'Base rows should render a lightweight placeholder before constructing offscreen editors'
+  );
+
+  assert.match(
+    text,
+    /if \(!baseRowLazyObserver \|\| rowElements\.length <= 18\) \{\s*ensureInputMounted\(\);\s*\} else \{\s*baseRowLazyObserver\.observe\(r\);\s*\}/m,
+    'Base tab should eagerly mount only the initial visible rows and defer the rest'
+  );
+});
+
+test('C3X base search debounces filter work instead of running on every keystroke', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /filterInput\.addEventListener\('input', \(\) => \{\s*scheduleTabSearchRender\('base', applyFilter, \{ delayMs: 90 \}\);/m,
+    'Base-tab search should debounce row filtering work behind scheduleTabSearchRender'
+  );
+
+  assert.doesNotMatch(
+    text,
+    /filterInput\.addEventListener\('input', applyFilter\);/,
+    'Base-tab search should no longer run applyFilter directly on every keystroke'
+  );
+});

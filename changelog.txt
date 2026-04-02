@@ -1,4 +1,6 @@
 * RELEASE 27.1
+- Improved C3X base-tab responsiveness in large scenarios by moving continuous base-field typing onto the existing grouped undo-session path instead of taking a full editable-bundle snapshot on every keystroke; dirty tracking, save output, and discrete undo actions still use the same save/restore pipeline.
+- Changed the C3X base tab to construct offscreen row editors lazily as they approach the viewport, reducing initial tab-open cost on large scenario configs without changing validation, save, or undo state tracking.
 - Added an Era dropdown next to search in the Techs and Units tabs, populated from the loaded scenario/base-game ERAS data and off by default; Units filter by the era of their required tech.
 - Added localized encoding support for Civilopedia/PediaIcons/diplomacy text files and BIQ-backed names/labels, including auto-detection for common Civ3 code pages, same-encoding save preservation, and a global UI override when auto-detect is ambiguous.
 - Unit and improvement prerequisite resource dropdowns now include bonus resources, matching Quintillus Editor instead of restricting those BIQ pickers to luxury and strategic resources.

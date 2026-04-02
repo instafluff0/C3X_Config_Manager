@@ -132,7 +132,7 @@ node --check src/artPreview.js
 npm test
 ```
 
-Note that this repo has many tests, such that running all may take several minutes. Set a suitably high threshold (~6 minutes) and wait for them to complete.
+Note that this repo has many tests, such that running all may take several minutes. Set a suitably high threshold (~10 minutes) and wait for them to complete.
 
 ## Deep-Dive References
 - `docs/DomainGroundTruth.md` for detailed precedence and file semantics.
