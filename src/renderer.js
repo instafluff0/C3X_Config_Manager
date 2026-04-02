@@ -5908,7 +5908,10 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     items,
     createDefaultItem,
     addLabel = 'Add Item',
-    buildItemNode
+    buildItemNode,
+    lazyItemMount = false,
+    eagerItemCount = 0,
+    itemPlaceholderMinHeight = 72
   }) => {
     const wrap = document.createElement('div');
     wrap.className = className;
@@ -5916,46 +5919,89 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.textContent = addLabel;
-    const nodeByItem = new Map();
+    const shellByItem = new Map();
+    const supportsLazyItemMount = lazyItemMount && typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function';
+    const itemLazyObserver = supportsLazyItemMount
+      ? new window.IntersectionObserver((entries, observer) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const shell = entry.target;
+            if (shell && typeof shell._ensureLazyItemMounted === 'function') {
+              shell._ensureLazyItemMounted();
+            }
+            observer.unobserve(shell);
+          });
+        }, {
+          root: el.tabContent || null,
+          rootMargin: '420px 0px'
+        })
+      : null;
+
+    const createItemShell = (item, mountNow = false) => {
+      const shell = document.createElement('div');
+      shell.className = 'structured-list-item-shell';
+      const placeholder = document.createElement('div');
+      placeholder.className = 'structured-list-item-placeholder';
+      placeholder.style.minHeight = `${Math.max(32, Number(itemPlaceholderMinHeight) || 72)}px`;
+      placeholder.textContent = 'Loading item...';
+      shell.appendChild(placeholder);
+      let mounted = false;
+      const ensureMounted = () => {
+        if (mounted) return;
+        mounted = true;
+        shell.innerHTML = '';
+        shell.appendChild(buildItemNode(item, api));
+        shell.classList.add('is-mounted');
+      };
+      shell._ensureLazyItemMounted = ensureMounted;
+      shell.addEventListener('focusin', ensureMounted);
+      shell.addEventListener('pointerenter', ensureMounted, { once: true });
+      if (mountNow || !itemLazyObserver) {
+        ensureMounted();
+      } else {
+        itemLazyObserver.observe(shell);
+      }
+      return shell;
+    };
 
     const api = {
       items,
       rerenderItem(item) {
         if (!item) return;
-        const oldNode = nodeByItem.get(item) || null;
-        const newNode = buildItemNode(item, api);
-        nodeByItem.set(item, newNode);
-        if (oldNode && oldNode.parentNode === itemsHost) {
-          itemsHost.replaceChild(newNode, oldNode);
+        const oldShell = shellByItem.get(item) || null;
+        const newShell = createItemShell(item, true);
+        shellByItem.set(item, newShell);
+        if (oldShell && oldShell.parentNode === itemsHost) {
+          itemsHost.replaceChild(newShell, oldShell);
         } else {
-          itemsHost.appendChild(newNode);
+          itemsHost.appendChild(newShell);
         }
       },
       addItem(item) {
         if (!item) return;
         items.push(item);
-        const node = buildItemNode(item, api);
-        nodeByItem.set(item, node);
-        itemsHost.appendChild(node);
+        const shell = createItemShell(item, true);
+        shellByItem.set(item, shell);
+        itemsHost.appendChild(shell);
       },
       removeItem(item) {
         const idx = items.indexOf(item);
         if (idx >= 0) items.splice(idx, 1);
-        const node = nodeByItem.get(item);
-        if (node && node.parentNode === itemsHost) {
-          itemsHost.removeChild(node);
+        const shell = shellByItem.get(item);
+        if (shell && shell.parentNode === itemsHost) {
+          itemsHost.removeChild(shell);
         }
-        nodeByItem.delete(item);
+        shellByItem.delete(item);
         if (items.length === 0) {
           api.addItem(createDefaultItem());
         }
       }
     };
 
-    items.forEach((item) => {
-      const node = buildItemNode(item, api);
-      nodeByItem.set(item, node);
-      itemsHost.appendChild(node);
+    items.forEach((item, idx) => {
+      const shell = createItemShell(item, idx < Math.max(0, Number(eagerItemCount) || 0));
+      shellByItem.set(item, shell);
+      itemsHost.appendChild(shell);
     });
     addBtn.addEventListener('click', () => {
       api.addItem(createDefaultItem());
@@ -5971,6 +6017,9 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const editor = buildIncrementalStructuredListEditor({
       items,
       createDefaultItem: () => ({ name: '', amount: '' }),
+      lazyItemMount: true,
+      eagerItemCount: 6,
+      itemPlaceholderMinHeight: 50,
       buildItemNode: (item, api) => {
         const block = document.createElement('div');
         block.className = 'kv-row';
@@ -6275,6 +6324,9 @@ function makeInputForBaseRow(row, onChange, options = {}) {
             ? { name: '', amount: '', kind: 'governments' }
             : { name: '', amount: '', kind: inferProductionKind('') };
       },
+      lazyItemMount: true,
+      eagerItemCount: 5,
+      itemPlaceholderMinHeight: 76,
       buildItemNode: (item, api) => {
         const line = document.createElement('div');
         line.className = 'structured-card';
@@ -6348,6 +6400,9 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const editor = buildIncrementalStructuredListEditor({
       items,
       createDefaultItem: () => ({ name: '', amount: '' }),
+      lazyItemMount: true,
+      eagerItemCount: 5,
+      itemPlaceholderMinHeight: 76,
       buildItemNode: (item, api) => {
         const line = document.createElement('div');
         line.className = 'structured-card';
@@ -6421,6 +6476,9 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const editor = buildIncrementalStructuredListEditor({
       items,
       createDefaultItem: () => ({ building: '', units: [] }),
+      lazyItemMount: true,
+      eagerItemCount: 4,
+      itemPlaceholderMinHeight: 118,
       buildItemNode: (item, api) => {
         const block = document.createElement('div');
         block.className = 'structured-card';
@@ -6479,6 +6537,9 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const editor = buildIncrementalStructuredListEditor({
       items,
       createDefaultItem: () => ({ building: '', resource: '', flags: [] }),
+      lazyItemMount: true,
+      eagerItemCount: 4,
+      itemPlaceholderMinHeight: 126,
       buildItemNode: (item, api) => {
         const block = document.createElement('div');
         block.className = 'structured-card';

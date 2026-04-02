@@ -2404,6 +2404,17 @@ button.danger:hover {
   font-size: 12px;
 }
 
+.structured-list-item-placeholder {
+  border: 1px dashed rgba(111, 133, 170, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(245, 249, 255, 0.82), rgba(238, 244, 252, 0.72));
+  color: #6d7c98;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
 .base-row:hover {
   background: rgba(238, 244, 255, 0.9);
 }

@@ -301,6 +301,29 @@ test('long-list C3X base editors avoid full local rerenders on add/remove', () =
   });
 });
 
+test('long-list C3X base editors lazily mount offscreen items within mounted rows', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /const supportsLazyItemMount = lazyItemMount && typeof window !== 'undefined' && typeof window\.IntersectionObserver === 'function';/,
+    'Incremental list editor helper should support lazy per-item mounting'
+  );
+
+  assert.match(
+    text,
+    /const placeholder = document\.createElement\('div'\);[\s\S]*?placeholder\.className = 'structured-list-item-placeholder';[\s\S]*?placeholder\.textContent = 'Loading item\.\.\.';/,
+    'Lazy list items should use lightweight placeholders before constructing picker-heavy cards'
+  );
+
+  assert.match(
+    text,
+    /lazyItemMount: true,[\s\S]*?eagerItemCount: 5,[\s\S]*?itemPlaceholderMinHeight: 76,[\s\S]*?if \(row\.key === 'production_perfume'/,
+    'Perfume-style long lists should enable lazy per-item mounting'
+  );
+});
+
 test('C3X base rows lazily mount offscreen editors', () => {
   const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
   const text = fs.readFileSync(rendererPath, 'utf8');
