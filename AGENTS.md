@@ -72,9 +72,10 @@ Behavior follows C3X parsing semantics from `injected_code.c`.
 - Infer missing paths on startup; auto-load when inferred/saved paths are valid.
 - Path inputs are browse/select driven to avoid typo drift.
 
-# Changelog
+# Changelog and Versioning
 - Agent-authored changes must add a concise entry to `changelog.txt`; keep release notes there, not in this file.
 - Check the current version in package.json and make sure that corresponds to your changelog entry.
+- Never bump the version yourself. The human will handle that.
 - If you don't see the package.json version in the changelog, add it to the top.
 - Never add a changelog version (e.g. "R28.1") that is higher than the version shown in package.json.
 

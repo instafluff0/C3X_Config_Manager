@@ -1,8 +1,13 @@
 * RELEASE 27.1
+- Added an Era dropdown next to search in the Techs and Units tabs, populated from the loaded scenario/base-game ERAS data and off by default; Units filter by the era of their required tech.
 - Added localized encoding support for Civilopedia/PediaIcons/diplomacy text files and BIQ-backed names/labels, including auto-detection for common Civ3 code pages, same-encoding save preservation, and a global UI override when auto-detect is ambiguous.
 - Unit and improvement prerequisite resource dropdowns now include bonus resources, matching Quintillus Editor instead of restricting those BIQ pickers to luxury and strategic resources.
 - Reduced a renderer leak that could accumulate global click handlers while reopening Civilopedia editors and picker widgets, which could lead to random white-screen renderer failures during typing/clicking/dragging on Windows.
 - Added explicit renderer crash and hang logging plus a recovery message when the Electron content process dies, so white-screen failures are now easier to diagnose.
+- Changed Civilopedia editing so live preview stays on while typing, but undo now groups the entire edit session into a single change when you click `Done`, instead of capturing every keystroke as a separate undo step.
+- Fixed undo dirty-badge restoration so reverting a Civilopedia or other grouped edit now fully clears the entry/tab modified badges when the restored data matches the clean state.
+- Reduced tech tree drag-time rendering overhead by throttling node movement updates to animation frames and caching node metrics for edge routing, which should make dragging smoother and reduce white-screen renderer failures on large trees.
+- Reworked other continuous text/number editors, including BIQ rule fields and diplomacy editors, so undo snapshots are grouped by edit session instead of being recorded on every keystroke.
 
 * RELEASE 27.0
 - Changed `New -> Create from Base Game` to use a typed `Search Folder` field instead of a browse-only folder path, matching the copy-scenario flow and defaulting that field from the scenario name.
