@@ -4177,7 +4177,7 @@ function createInlineHistoryNav(options = {}) {
 
   nav.appendChild(backBtn);
   nav.appendChild(forwardBtn);
-  if (tabKey === 'units' || tabKey === 'improvements' || tabKey === 'technologies') {
+  if (tabKey === 'units' || tabKey === 'improvements' || tabKey === 'technologies' || tabKey === 'civilizations') {
     const isSidebarVisible = () => {
       const explicit = state.referenceContextPaneVisible[tabKey];
       if (typeof explicit === 'boolean') return explicit;
@@ -6656,6 +6656,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
 
 function renderBaseTab(tab) {
   const wrap = document.createElement('div');
+  wrap.className = 'section-editor';
   const cleanTabs = getCleanTabsObject();
   const cleanBaseTab = cleanTabs && cleanTabs.base && Array.isArray(cleanTabs.base.rows) ? cleanTabs.base : null;
   const cleanValueByKey = new Map(
@@ -11376,6 +11377,7 @@ const REFERENCE_RULE_SCHEMAS = {
       flavor_5: { group: 'Flavors', control: 'bool', label: 'Flavor5' },
       flavor_6: { group: 'Flavors', control: 'bool', label: 'Flavor6' },
       flavor_7: { group: 'Flavors', control: 'bool', label: 'Flavor7' },
+      diplomacytextindex: { group: 'Colors', control: 'select', label: 'Diplomacy Text' },
       uniquecolor: { group: 'Colors', control: 'select', label: 'Unique Color' },
       defaultcolor: { group: 'Colors', control: 'select', label: 'Default Color' }
     }
@@ -11989,6 +11991,7 @@ function appendRuleFieldsToGroupCard({ groupCard, fields, entry, tabKey, selecte
     const refOptions = getReferenceOptionsForField(tabKey, field);
     const desiredControl = spec.control || '';
     const baseKey = String(field.baseKey || field.key || '').toLowerCase();
+    const useResourceTypeSegmented = tabKey === 'resources' && normalizeRuleLookupKey(baseKey) === 'type' && enumOptions.length > 0;
     const useColorSlotPicker = tabKey === 'civilizations' && (baseKey === 'defaultcolor' || baseKey === 'uniquecolor');
     const fieldEditable = referenceEditable && !isReadonlyRuleField(tabKey, field);
 
@@ -11997,7 +12000,22 @@ function appendRuleFieldsToGroupCard({ groupCard, fields, entry, tabKey, selecte
       const hasRefOptions = refOptions.length > 0;
       const useReferencePicker = hasRefOptions && (desiredControl === 'reference' || (!desiredControl && !hasEnumOptions));
 
-      if (desiredControl === 'unit-list') {
+      if (useResourceTypeSegmented) {
+        const parsedCurrent = parseIntFromDisplayValue(field.value);
+        const current = enumOptions.find((opt) => String(opt.value) === String(parsedCurrent == null ? field.value : parsedCurrent));
+        const segmented = makeSegmentedChoiceControl(
+          enumOptions.map((opt) => String(opt.label || opt.value || '')),
+          current ? String(current.label || current.value || '') : '',
+          (nextLabel) => {
+            const selected = enumOptions.find((opt) => String(opt.label || opt.value || '') === String(nextLabel || ''));
+            if (!selected) return;
+            rememberUndoSnapshot();
+            field.value = String(selected.value);
+            setDirty(true);
+          }
+        );
+        controlWrap.appendChild(segmented);
+      } else if (desiredControl === 'unit-list') {
         const initialValues = Array.isArray(field.multiValues)
           ? field.multiValues
           : String(field.value || '').split(',').map((v) => v.trim()).filter(Boolean);
@@ -12179,7 +12197,17 @@ function appendRuleFieldsToGroupCard({ groupCard, fields, entry, tabKey, selecte
       const hasEnumOptions = enumOptions.length > 0;
       const hasRefOptions = refOptions.length > 0;
       const useReferencePicker = hasRefOptions && (desiredControl === 'reference' || (!desiredControl && !hasEnumOptions));
-      if (useReferencePicker) {
+      if (useResourceTypeSegmented) {
+        const parsedCurrent = parseIntFromDisplayValue(field.value);
+        const current = enumOptions.find((opt) => String(opt.value) === String(parsedCurrent == null ? field.value : parsedCurrent));
+        const segmented = makeSegmentedChoiceControl(
+          enumOptions.map((opt) => String(opt.label || opt.value || '')),
+          current ? String(current.label || current.value || '') : '',
+          null,
+          { disabled: true }
+        );
+        controlWrap.appendChild(segmented);
+      } else if (useReferencePicker) {
         const labelText = String(field.label || field.key || 'value').trim();
         const isTechPrereqField = tabKey === 'technologies' && /^prerequisite/i.test(String(field.baseKey || field.key || ''));
         const normalizedCurrentValue = isTechPrereqField
@@ -12849,23 +12877,44 @@ function cfgLabelFromPrefix(prefix) {
 
 function renderCivilizationNoteListEditor(entry, cfg, referenceEditable) {
   const wrap = document.createElement('div');
-  wrap.className = 'structured-list';
+  wrap.className = 'civilization-name-list-editor';
   const itemPrefix = String(cfg && cfg.itemPrefix || 'note');
   const state = getCivilizationNoteListState(entry, cfg.countKey, itemPrefix);
   if (!referenceEditable) {
     const text = document.createElement('div');
-    text.className = 'field-meta';
+    text.className = 'field-meta civilization-name-list-readonly';
     text.textContent = state.values.length ? state.values.join(', ') : '(none)';
     wrap.appendChild(text);
     return wrap;
   }
 
   let items = state.values.slice();
+  const toolbar = document.createElement('div');
+  toolbar.className = 'civilization-name-list-toolbar';
+  const title = document.createElement('div');
+  title.className = 'civilization-name-list-toolbar-title';
+  title.textContent = String(cfg && cfg.label || 'List');
+  toolbar.appendChild(title);
+  const count = document.createElement('span');
+  count.className = 'civilization-name-list-count';
+  toolbar.appendChild(count);
+
+  const addRow = document.createElement('div');
+  addRow.className = 'civilization-name-list-add';
+  const addInput = document.createElement('input');
+  addInput.type = 'search';
+  addInput.placeholder = cfg.placeholder;
+  addInput.className = 'civilization-name-list-input app-search-input';
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'civilization-name-list-add-btn';
+  addBtn.textContent = '+';
+  addBtn.title = `Add ${cfg.label}`;
+  addRow.appendChild(addInput);
+  addRow.appendChild(addBtn);
+
   const list = document.createElement('div');
-  list.className = 'structured-list';
-  list.style.maxHeight = '180px';
-  list.style.overflow = 'auto';
-  list.style.paddingRight = '2px';
+  list.className = 'civilization-name-list-items';
 
   const commit = () => {
     setCivilizationNoteListValues(entry, cfg.countKey, items, itemPrefix);
@@ -12873,20 +12922,25 @@ function renderCivilizationNoteListEditor(entry, cfg, referenceEditable) {
   };
 
   const rerender = () => {
+    count.textContent = `${items.length} ${items.length === 1 ? 'entry' : 'entries'}`;
     list.innerHTML = '';
     if (items.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'field-meta';
+      empty.className = 'field-meta civilization-name-list-empty';
       empty.textContent = '(none)';
       list.appendChild(empty);
     } else {
       items.forEach((value, idx) => {
         const line = document.createElement('div');
-        line.className = 'kv-row compact';
+        line.className = 'civilization-name-list-item';
+        const index = document.createElement('span');
+        index.className = 'civilization-name-list-index';
+        index.textContent = String(idx + 1);
         const input = document.createElement('input');
         input.type = 'text';
         input.placeholder = cfg.placeholder;
         input.value = value;
+        input.className = 'civilization-name-list-input';
         wireGroupedUndoSession(input, {
           key: `CIV_NOTE:${String(cfg.countKey || '')}:${idx}`,
           getValue: () => input.value
@@ -12897,13 +12951,16 @@ function renderCivilizationNoteListEditor(entry, cfg, referenceEditable) {
         });
         const del = document.createElement('button');
         del.type = 'button';
-        withRemoveIcon(del, ' Remove');
+        del.className = 'civilization-name-list-remove-btn';
+        withRemoveIcon(del, '');
+        del.title = `Remove ${cfg.label} ${idx + 1}`;
         del.addEventListener('click', () => {
           rememberUndoSnapshot();
           items.splice(idx, 1);
           commit();
           rerender();
         });
+        line.appendChild(index);
         line.appendChild(input);
         line.appendChild(del);
         list.appendChild(line);
@@ -12911,15 +12968,6 @@ function renderCivilizationNoteListEditor(entry, cfg, referenceEditable) {
     }
   };
 
-  const addRow = document.createElement('div');
-  addRow.className = 'kv-row compact';
-  const addInput = document.createElement('input');
-  addInput.type = 'text';
-  addInput.placeholder = cfg.placeholder;
-  const addBtn = document.createElement('button');
-  addBtn.type = 'button';
-  addBtn.textContent = '+';
-  addBtn.title = `Add ${cfg.label}`;
   const addItem = () => {
     const value = String(addInput.value || '').trim();
     if (!value) return;
@@ -12931,16 +12979,30 @@ function renderCivilizationNoteListEditor(entry, cfg, referenceEditable) {
     const lastInput = list.querySelector('.kv-row.compact input:last-of-type');
     if (lastInput) lastInput.focus({ preventScroll: true });
   };
+  const syncAddButton = () => {
+    const enabled = String(addInput.value || '').trim().length > 0;
+    addBtn.disabled = !enabled;
+    addBtn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+  };
   addBtn.addEventListener('click', addItem);
+  addInput.addEventListener('input', syncAddButton);
   addInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      if (addInput.value) {
+        addInput.value = '';
+        syncAddButton();
+      }
+      return;
+    }
     if (ev.key !== 'Enter') return;
     ev.preventDefault();
     addItem();
   });
-  addRow.appendChild(addInput);
-  addRow.appendChild(addBtn);
+  wrap.appendChild(toolbar);
   wrap.appendChild(addRow);
   wrap.appendChild(list);
+  syncAddButton();
   rerender();
   return wrap;
 }
@@ -13185,7 +13247,7 @@ function renderCivilizationBuildPriorityCard(entry, referenceEditable) {
     const th = document.createElement('th');
     th.textContent = h;
     th.style.textAlign = idx === 0 ? 'left' : 'center';
-    th.style.padding = '6px 4px';
+    th.style.padding = '3px 4px 5px';
     th.style.borderBottom = '1px solid rgba(36, 25, 64, 0.2)';
     trh.appendChild(th);
   });
@@ -13196,25 +13258,31 @@ function renderCivilizationBuildPriorityCard(entry, referenceEditable) {
     const tr = document.createElement('tr');
     const tdLabel = document.createElement('td');
     tdLabel.textContent = cfg.label;
-    tdLabel.style.padding = '6px 4px';
+    tdLabel.style.padding = '1px 4px';
+    tdLabel.style.lineHeight = '1.15';
+    tdLabel.style.verticalAlign = 'middle';
     const oftenField = getBiqFieldByBaseKey(entry, cfg.often);
     const neverField = getBiqFieldByBaseKey(entry, cfg.never);
     const tdOften = document.createElement('td');
-    tdOften.style.padding = '6px 4px';
+    tdOften.style.padding = '1px 4px';
     tdOften.style.textAlign = 'center';
+    tdOften.style.verticalAlign = 'middle';
     const tdNever = document.createElement('td');
-    tdNever.style.padding = '6px 4px';
+    tdNever.style.padding = '1px 4px';
     tdNever.style.textAlign = 'center';
+    tdNever.style.verticalAlign = 'middle';
     if (referenceEditable) {
       const makeToggle = (field, checked) => {
         const wrap = document.createElement('label');
-        wrap.className = 'bool-toggle bool-row-toggle';
+        wrap.className = 'civilization-build-priority-toggle civilization-boolean-item';
         const check = document.createElement('input');
         check.type = 'checkbox';
         check.checked = checked;
+        wrap.classList.toggle('active', check.checked);
         check.addEventListener('change', () => {
           rememberUndoSnapshot();
           if (field) field.value = check.checked ? 'true' : 'false';
+          wrap.classList.toggle('active', check.checked);
           setDirty(true);
         });
         wrap.appendChild(check);
@@ -13251,29 +13319,25 @@ function renderCivilizationNameListsCard(entry, referenceEditable) {
   const hasAny = fields.some((field) => isCivilizationNoteListCountField(field) || isCivilizationNameListItemField(field));
   if (!hasAny) return null;
   const card = document.createElement('div');
-  card.className = 'rule-group-card';
+  card.className = 'rule-group-card civilization-name-lists-card';
   const title = document.createElement('div');
   title.className = 'rule-group-title';
   title.textContent = 'Name Lists';
   card.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'civilization-name-lists-grid';
   const rows = [
     { label: 'City Names', countKey: 'numcitynames', itemPrefix: 'cityname', placeholder: 'City name' },
     { label: 'Military Leaders', countKey: 'numgreatleaders', itemPrefix: 'milleader', placeholder: 'Military leader name' },
     { label: 'Scientific Leaders', countKey: 'numscientificleaders', itemPrefix: 'scientificleader', placeholder: 'Scientific leader name' }
   ];
   rows.forEach((cfg) => {
-    const row = document.createElement('div');
-    row.className = 'rule-row';
-    const label = document.createElement('label');
-    label.className = 'field-meta';
-    label.textContent = cfg.label;
-    row.appendChild(label);
-    const controlWrap = document.createElement('div');
-    controlWrap.className = 'rule-control';
-    controlWrap.appendChild(renderCivilizationNoteListEditor(entry, cfg, referenceEditable));
-    row.appendChild(controlWrap);
-    card.appendChild(row);
+    const panel = document.createElement('section');
+    panel.className = 'civilization-name-list-panel';
+    panel.appendChild(renderCivilizationNoteListEditor(entry, cfg, referenceEditable));
+    grid.appendChild(panel);
   });
+  card.appendChild(grid);
   return card;
 }
 
@@ -13780,9 +13844,11 @@ function replaceDiplomacySectionBodyForUi(tab, sectionKey, newSectionBodyText) {
   applyDiplomacyTextToCivilizationSlots(tab);
 }
 
-function renderCivilizationDiplomacySectionsCard(tab, entry, referenceEditable) {
+function renderCivilizationDiplomacySectionsCard(tab, entry, referenceEditable, options = {}) {
+  const showIndexRow = options.showIndexRow !== false;
   const outer = document.createElement('details');
   outer.className = 'rule-group-card';
+  outer.dataset.sectionLabel = 'Diplomacy Text';
   const title = document.createElement('summary');
   title.className = 'rule-group-title';
   title.textContent = 'Diplomacy Text';
@@ -13795,7 +13861,7 @@ function renderCivilizationDiplomacySectionsCard(tab, entry, referenceEditable) 
   const slotFieldsWrap = document.createElement('div');
   slotFieldsWrap.style.marginTop = '8px';
   const indexField = getBiqFieldByBaseKey(entry, 'diplomacytextindex');
-  if (indexField) {
+  if (indexField && showIndexRow) {
     const indexRow = document.createElement('div');
     indexRow.className = 'rule-row';
     const indexLabel = document.createElement('label');
@@ -14784,6 +14850,363 @@ const TECHNOLOGY_TOP_FIELD_KEYS = new Set([
   'prerequisite3',
   'prerequisite4'
 ]);
+
+const CIVILIZATION_TOP_FIELD_KEYS = new Set([
+  'civilopediaentry',
+  'civilizationname',
+  'noun',
+  'adjective',
+  'civilizationgender',
+  'plurality',
+  'culturegroup',
+  'leadertitle',
+  'leadername',
+  'leadergender',
+  'kingunit',
+  'favoritegovernment',
+  'shunnedgovernment',
+  'aggressionlevel',
+  'defaultcolor',
+  'uniquecolor',
+  'diplomacytextindex'
+]);
+
+function createCivilizationTopBoardCell(entry, labelText, sourceFields = []) {
+  const cell = document.createElement('div');
+  cell.className = 'civilization-top-cell';
+  cell.dataset.sectionLabel = labelText;
+  const label = document.createElement('label');
+  label.className = 'field-meta civilization-top-cell-label';
+  const strong = document.createElement('strong');
+  strong.textContent = labelText;
+  label.appendChild(strong);
+  sourceFields.filter(Boolean).forEach((field) => attachRichTooltip(label, createRuleFieldTooltipText(entry, 'civilizations', field)));
+  cell.appendChild(label);
+  const control = document.createElement('div');
+  control.className = 'civilization-top-cell-control';
+  cell.appendChild(control);
+  return { cell, label, control };
+}
+
+function buildCivilizationTopFieldControl({ entry, field, referenceEditable, selectedBaseIndex, options = {} }) {
+  if (!field) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'civilization-top-field-wrap';
+  const spec = getRuleFieldSpec('civilizations', field) || {};
+  appendRuleFieldsToGroupCard({
+    groupCard: wrap,
+    fields: [field],
+    entry,
+    tabKey: 'civilizations',
+    selectedBaseIndex,
+    referenceEditable
+  });
+  if (options.compactRow) wrap.classList.add('civilization-top-field-wrap-compact');
+  return wrap;
+}
+
+function renderCivilizationBooleanMatrixCard(groupName, fields, entry, tabKey, referenceEditable) {
+  const groupCard = document.createElement('div');
+  groupCard.className = 'rule-group-card civilization-matrix-card';
+  groupCard.dataset.sectionLabel = groupName;
+  const groupTitle = document.createElement('div');
+  groupTitle.className = 'rule-group-title';
+  groupTitle.textContent = groupName;
+  groupCard.appendChild(groupTitle);
+
+  const grid = document.createElement('div');
+  grid.className = 'civilization-boolean-matrix';
+  (Array.isArray(fields) ? fields : []).forEach((field) => {
+    const spec = getRuleFieldSpec(tabKey, field) || {};
+    const displayLabel = getRuleFieldDisplayLabel(tabKey, field, spec);
+    const item = document.createElement(referenceEditable ? 'label' : 'div');
+    item.className = 'civilization-boolean-item';
+    attachRichTooltip(item, createRuleFieldTooltipText(entry, tabKey, field));
+
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = String(field && field.value || '').toLowerCase() === 'true';
+    check.disabled = !referenceEditable;
+    if (referenceEditable) {
+      check.addEventListener('change', () => {
+        rememberUndoSnapshot();
+        field.value = check.checked ? 'true' : 'false';
+        item.classList.toggle('active', check.checked);
+        setDirty(true);
+      });
+    }
+    item.classList.toggle('active', check.checked);
+
+    const label = document.createElement('span');
+    label.textContent = displayLabel;
+    item.appendChild(check);
+    item.appendChild(label);
+    grid.appendChild(item);
+  });
+
+  groupCard.appendChild(grid);
+  return groupCard;
+}
+
+function renderCivilizationAnimationTableCard(entry, referenceEditable, selectedBaseIndex) {
+  const eraRows = [
+    { era: 'Ancient', forward: getBiqFieldByBaseKey(entry, 'forwardfilename_for_era_0'), reverse: getBiqFieldByBaseKey(entry, 'reversefilename_for_era_0') },
+    { era: 'Middle Ages', forward: getBiqFieldByBaseKey(entry, 'forwardfilename_for_era_1'), reverse: getBiqFieldByBaseKey(entry, 'reversefilename_for_era_1') },
+    { era: 'Industrial', forward: getBiqFieldByBaseKey(entry, 'forwardfilename_for_era_2'), reverse: getBiqFieldByBaseKey(entry, 'reversefilename_for_era_2') },
+    { era: 'Modern', forward: getBiqFieldByBaseKey(entry, 'forwardfilename_for_era_3'), reverse: getBiqFieldByBaseKey(entry, 'reversefilename_for_era_3') }
+  ].filter((row) => row.forward || row.reverse);
+  if (eraRows.length === 0) return null;
+
+  const card = document.createElement('div');
+  card.className = 'rule-group-card civilization-animation-card';
+  card.dataset.sectionLabel = 'Animations';
+  const title = document.createElement('div');
+  title.className = 'rule-group-title';
+  title.textContent = 'Animations';
+  card.appendChild(title);
+
+  const table = document.createElement('div');
+  table.className = 'civilization-animation-table';
+  const headers = ['Era', 'Forward', 'Reverse'];
+  headers.forEach((headerText) => {
+    const head = document.createElement('div');
+    head.className = 'civilization-animation-head';
+    head.textContent = headerText;
+    table.appendChild(head);
+  });
+
+  eraRows.forEach((row) => {
+    const eraCell = document.createElement('div');
+    eraCell.className = 'civilization-animation-era';
+    eraCell.textContent = row.era;
+    table.appendChild(eraCell);
+
+    [row.forward, row.reverse].forEach((field) => {
+      const cell = document.createElement('div');
+      cell.className = 'civilization-animation-cell';
+      const control = buildCivilizationTopFieldControl({
+        entry,
+        field,
+        referenceEditable,
+        selectedBaseIndex,
+        options: { compactRow: true }
+      });
+      if (control) cell.appendChild(control);
+      table.appendChild(cell);
+    });
+  });
+
+  card.appendChild(table);
+  return card;
+}
+
+function renderCivilizationDenseTopBoard(entry, referenceEditable, selectedBaseIndex) {
+  const cards = buildCivilizationTopBoardCards(entry, referenceEditable, selectedBaseIndex);
+  const wrap = document.createElement('div');
+  wrap.className = 'civilization-main-board';
+
+  const primaryRow = document.createElement('div');
+  primaryRow.className = 'civilization-top-grid civilization-top-grid-primary';
+  ['identity', 'grammar', 'leader', 'personality'].forEach((key) => {
+    if (cards[key]) primaryRow.appendChild(cards[key]);
+  });
+  if (primaryRow.childElementCount > 0) wrap.appendChild(primaryRow);
+
+  const secondaryRow = document.createElement('div');
+  secondaryRow.className = 'civilization-top-grid civilization-top-grid-secondary';
+  if (cards.colors) secondaryRow.appendChild(cards.colors);
+  if (secondaryRow.childElementCount > 0) wrap.appendChild(secondaryRow);
+  return wrap;
+}
+
+function buildCivilizationTopBoardCards(entry, referenceEditable, selectedBaseIndex) {
+  const cards = {};
+  const wrap = document.createElement('div');
+
+  const identityFields = [
+    getBiqFieldByBaseKey(entry, 'civilizationname'),
+    getBiqFieldByBaseKey(entry, 'noun'),
+    getBiqFieldByBaseKey(entry, 'adjective')
+  ].filter(Boolean);
+  if (identityFields.length > 0) {
+    const { cell, control } = createCivilizationTopBoardCell(entry, 'IDENTITY', identityFields);
+    identityFields.forEach((field) => {
+      const fieldControl = buildCivilizationTopFieldControl({ entry, field, referenceEditable, selectedBaseIndex });
+      if (fieldControl) control.appendChild(fieldControl);
+    });
+    cards.identity = cell;
+  }
+
+  const grammarFields = [
+    getBiqFieldByBaseKey(entry, 'civilizationgender'),
+    getBiqFieldByBaseKey(entry, 'plurality'),
+    getBiqFieldByBaseKey(entry, 'culturegroup')
+  ].filter(Boolean);
+  if (grammarFields.length > 0) {
+    const { cell, control } = createCivilizationTopBoardCell(entry, 'GRAMMER / CULTURE', grammarFields);
+    grammarFields.forEach((field) => {
+      const fieldControl = buildCivilizationTopFieldControl({ entry, field, referenceEditable, selectedBaseIndex });
+      if (fieldControl) control.appendChild(fieldControl);
+    });
+    cards.grammar = cell;
+  }
+
+  const leaderFields = [
+    getBiqFieldByBaseKey(entry, 'leadertitle'),
+    getBiqFieldByBaseKey(entry, 'leadername'),
+    getBiqFieldByBaseKey(entry, 'leadergender'),
+    getBiqFieldByBaseKey(entry, 'kingunit')
+  ].filter(Boolean);
+  if (leaderFields.length > 0) {
+    const { cell, control } = createCivilizationTopBoardCell(entry, 'LEADER', leaderFields);
+    leaderFields.forEach((field) => {
+      const fieldControl = buildCivilizationTopFieldControl({ entry, field, referenceEditable, selectedBaseIndex });
+      if (fieldControl) control.appendChild(fieldControl);
+    });
+    cards.leader = cell;
+  }
+
+  const personalityFields = [
+    getBiqFieldByBaseKey(entry, 'favoritegovernment'),
+    getBiqFieldByBaseKey(entry, 'shunnedgovernment'),
+    getBiqFieldByBaseKey(entry, 'aggressionlevel')
+  ].filter(Boolean);
+  if (personalityFields.length > 0) {
+    const { cell, control } = createCivilizationTopBoardCell(entry, 'PERSONALITY', personalityFields);
+    personalityFields.forEach((field) => {
+      const fieldControl = buildCivilizationTopFieldControl({ entry, field, referenceEditable, selectedBaseIndex });
+      if (fieldControl) control.appendChild(fieldControl);
+    });
+    cards.personality = cell;
+  }
+
+  const colorFields = [
+    getBiqFieldByBaseKey(entry, 'defaultcolor'),
+    getBiqFieldByBaseKey(entry, 'uniquecolor'),
+    getBiqFieldByBaseKey(entry, 'diplomacytextindex')
+  ].filter(Boolean);
+  if (colorFields.length > 0) {
+    const { cell, control } = createCivilizationTopBoardCell(entry, 'COLORS / DIPLOMACY', colorFields);
+    cell.classList.add('civilization-top-cell-inline');
+    colorFields.forEach((field) => {
+      const fieldControl = buildCivilizationTopFieldControl({ entry, field, referenceEditable, selectedBaseIndex });
+      if (fieldControl) control.appendChild(fieldControl);
+    });
+    cards.colors = cell;
+  }
+  return cards;
+}
+
+function getCivilizationDenseAvailableWidth() {
+  const detailLayout = el && el.tabContent ? el.tabContent.querySelector('.reference-detail-layout.reference-detail-layout-civilizations') : null;
+  const textCol = detailLayout ? detailLayout.querySelector('.reference-text-col') : null;
+  const textColWidth = textCol
+    ? Math.floor(textCol.getBoundingClientRect().width)
+    : 0;
+  if (textColWidth > 0) return textColWidth;
+  const totalWidth = el && el.tabContent && Number.isFinite(el.tabContent.clientWidth)
+    ? el.tabContent.clientWidth
+    : (typeof window !== 'undefined' ? window.innerWidth : 0);
+  const renderedListPane = el && el.tabContent ? el.tabContent.querySelector('.entry-list-pane') : null;
+  const listPaneWidth = renderedListPane
+    ? Math.ceil(renderedListPane.getBoundingClientRect().width)
+    : 290;
+  const navPane = detailLayout ? detailLayout.querySelector('.reference-nav-col:not(.hidden)') : null;
+  const navPaneWidth = navPane
+    ? Math.ceil(navPane.getBoundingClientRect().width)
+    : 0;
+  return Math.max(0, totalWidth - listPaneWidth - navPaneWidth - 24);
+}
+
+function getCivilizationDenseLayoutMode() {
+  const availableWidth = getCivilizationDenseAvailableWidth();
+  if (availableWidth <= 760) return 'one';
+  return 'two';
+}
+
+function renderCivilizationDenseRulesLayout({ tab, entry, tabKey, selectedBaseIndex, referenceEditable, groupedFields }) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'civilization-rules-layout';
+  const layoutMode = getCivilizationDenseLayoutMode();
+  wrapper.dataset.layoutMode = layoutMode;
+  const topCards = buildCivilizationTopBoardCards(entry, referenceEditable, selectedBaseIndex);
+
+  const board = document.createElement('div');
+  board.className = 'civilization-dashboard-grid';
+  const bottomStack = document.createElement('div');
+  bottomStack.className = 'civilization-bottom-stack';
+
+  groupedFields.delete('Free Technologies');
+  const nameListsCard = renderCivilizationNameListsCard(entry, referenceEditable);
+  const buildMatrixCard = (groupName) => {
+    const fields = groupedFields.get(groupName);
+    if (!fields || fields.length === 0) return null;
+    groupedFields.delete(groupName);
+    return renderCivilizationBooleanMatrixCard(groupName, fields, entry, tabKey, referenceEditable);
+  };
+
+  const traitsCard = buildMatrixCard('Traits');
+  const governorCard = buildMatrixCard('Governor Settings');
+  const flavorsCard = buildMatrixCard('Flavors');
+  const buildCard = renderCivilizationBuildPriorityCard(entry, referenceEditable);
+
+  if (layoutMode === 'two') {
+    const leftCol = document.createElement('div');
+    leftCol.className = 'civilization-dashboard-col civilization-dashboard-col-left';
+    const rightCol = document.createElement('div');
+    rightCol.className = 'civilization-dashboard-col civilization-dashboard-col-right';
+
+    [topCards.identity, topCards.leader, topCards.colors, nameListsCard].forEach((card) => {
+      if (card) leftCol.appendChild(card);
+    });
+
+    [topCards.grammar, topCards.personality, traitsCard, governorCard, flavorsCard, buildCard].forEach((card) => {
+      if (card) rightCol.appendChild(card);
+    });
+
+    if (leftCol.childElementCount > 0) board.appendChild(leftCol);
+    if (rightCol.childElementCount > 0) board.appendChild(rightCol);
+  } else {
+    wrapper.appendChild(renderCivilizationDenseTopBoard(entry, referenceEditable, selectedBaseIndex));
+    [traitsCard, governorCard, flavorsCard, buildCard, nameListsCard].forEach((card) => {
+      if (card) board.appendChild(card);
+    });
+  }
+
+  if (board.childElementCount > 0) wrapper.appendChild(board);
+
+  const diplomacySectionsCard = renderCivilizationDiplomacySectionsCard(tab, entry, referenceEditable, { showIndexRow: false });
+  if (diplomacySectionsCard) bottomStack.appendChild(diplomacySectionsCard);
+
+  const animationCard = renderCivilizationAnimationTableCard(entry, referenceEditable, selectedBaseIndex);
+  if (animationCard) {
+    groupedFields.delete('Animations');
+    bottomStack.appendChild(animationCard);
+  }
+
+  for (const [groupName, fields] of groupedFields.entries()) {
+    if (!fields || fields.length === 0) continue;
+    const groupCard = document.createElement('div');
+    groupCard.className = 'rule-group-card';
+    groupCard.dataset.sectionLabel = groupName;
+    const groupTitle = document.createElement('div');
+    groupTitle.className = 'rule-group-title';
+    groupTitle.textContent = groupName;
+    groupCard.appendChild(groupTitle);
+    appendRuleFieldsToGroupCard({
+      groupCard,
+      fields,
+      entry,
+      tabKey,
+      selectedBaseIndex,
+      referenceEditable
+    });
+    bottomStack.appendChild(groupCard);
+  }
+
+  if (bottomStack.childElementCount > 0) wrapper.appendChild(bottomStack);
+  return wrapper;
+}
 
 function renderTechnologyDenseRulesLayout({ entry, tabKey, selectedBaseIndex, referenceEditable, groupedFields, openCurrentTechTree }) {
   const wrapper = document.createElement('div');
@@ -18704,6 +19127,7 @@ function buildReferenceSectionNav({ tabKey, textCol, navCol }) {
     });
   }
 
+
   if (tabKey === 'improvements') {
     const directRuleRoots = Array.from(textCol.querySelectorAll(':scope > .kv-grid > .improvement-rules-layout'));
     directRuleRoots.forEach((root) => {
@@ -18714,6 +19138,28 @@ function buildReferenceSectionNav({ tabKey, textCol, navCol }) {
       });
       const groupCards = Array.from(root.querySelectorAll(':scope > .improvement-dashboard-grid .rule-group-card, :scope > .improvement-bottom-stack > .rule-group-card'));
       groupCards.forEach((groupCard) => addRuleGroupSection(groupCard));
+    });
+  }
+
+  if (tabKey === 'civilizations') {
+    const directRuleRoots = Array.from(textCol.querySelectorAll(':scope > .kv-grid > .civilization-rules-layout'));
+    directRuleRoots.forEach((root) => {
+      const topCells = Array.from(root.querySelectorAll(':scope > .civilization-main-board > .civilization-top-grid > .civilization-top-cell, :scope > .civilization-main-board > .civilization-top-grid > .civilization-animation-card'));
+      topCells.forEach((cell) => {
+        const title = extractTextWithoutButtons(cell.querySelector('.civilization-top-cell-label, .rule-group-title'));
+        addStandaloneSection(cell, title, 0);
+      });
+      const groupCards = Array.from(root.querySelectorAll(':scope > .civilization-dashboard-grid .rule-group-card, :scope > .civilization-bottom-stack > .rule-group-card'));
+      groupCards.forEach((groupCard) => addRuleGroupSection(groupCard));
+    });
+
+    const utilitySections = Array.from(textCol.querySelectorAll(':scope > .unit-utility-stack > details'));
+    utilitySections.forEach((section) => {
+      const title = extractTextWithoutButtons(section.querySelector(':scope > summary, :scope > .section-top strong'));
+      if (!title) return;
+      const id = makeId(title);
+      section.id = id;
+      sections.push({ id, label: title, level: 0 });
     });
   }
 
@@ -21159,6 +21605,7 @@ function renderReferenceTab(tab, tabKey) {
     if (tabKey === 'units') detailLayout.classList.add('reference-detail-layout-units');
     if (tabKey === 'technologies') detailLayout.classList.add('reference-detail-layout-technologies');
     if (tabKey === 'improvements') detailLayout.classList.add('reference-detail-layout-improvements');
+    if (tabKey === 'civilizations') detailLayout.classList.add('reference-detail-layout-civilizations');
     const showContextPane = isReferenceContextPaneVisible();
     detailLayout.classList.toggle('context-hidden', !showContextPane);
     const textCol = document.createElement('div');
@@ -21198,6 +21645,8 @@ function renderReferenceTab(tab, tabKey) {
   let unitUtilityStack = null;
   let improvementUtilityStack = null;
   let technologyUtilityStack = null;
+  let resourceUtilityStack = null;
+  let civilizationUtilityStack = null;
     let unitBottomArtSection = null;
     const identityGrid = document.createElement('div');
     identityGrid.className = 'kv-grid';
@@ -21638,13 +22087,120 @@ function renderReferenceTab(tab, tabKey) {
       });
       utilityStack.appendChild(pediaDetails);
       technologyUtilityStack = utilityStack.childElementCount > 0 ? utilityStack : null;
+    } else if (tabKey === 'resources') {
+      const utilityStack = document.createElement('div');
+      utilityStack.className = 'unit-utility-stack';
+      const pediaDetails = document.createElement('details');
+      pediaDetails.className = 'reference-art-collapse unit-compact-collapse';
+      const pediaOpenKey = 'resources:civilopedia';
+      pediaDetails.open = !!state.unitUtilitySectionOpenByKey[pediaOpenKey];
+      const pediaSummary = document.createElement('summary');
+      pediaSummary.textContent = 'Civilopedia';
+      attachRichTooltip(pediaSummary, formatSourceInfo(entry.sourceMeta && entry.sourceMeta.civilopediaSection1, 'Civilopedia'));
+      pediaDetails.appendChild(pediaSummary);
+      pediaDetails.addEventListener('toggle', () => {
+        state.unitUtilitySectionOpenByKey[pediaOpenKey] = !!pediaDetails.open;
+      });
+      const pediaBody = document.createElement('div');
+      pediaBody.className = 'unit-collapsible-body';
+      const editorBlock = createCivilopediaEditorBlock({
+        entry,
+        fieldKey: 'civilopedia',
+        titleText: 'Civilopedia',
+        sourceMeta: entry.sourceMeta && entry.sourceMeta.civilopediaSection1,
+        emptyText: 'Civilopedia text',
+        getValue: () => joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey),
+        setValue: (v) => { const parts = splitCivilopediaAtMarker(v); entry.civilopediaSection1 = parts.section1; entry.civilopediaSection2 = parts.section2; }
+      });
+      editorBlock.classList.remove('section-card', 'source-section');
+      const editorTop = editorBlock.querySelector(':scope > .section-top');
+      if (editorTop) {
+        const editorTitle = editorTop.querySelector('strong');
+        if (editorTitle) editorTitle.remove();
+      }
+      editorBlock.style.marginTop = '0';
+      pediaBody.appendChild(editorBlock);
+      pediaDetails.appendChild(pediaBody);
+      enableWideDetailsToggle(pediaDetails, {
+        ignoreSelectors: 'button, input, textarea, select, option, a, label, .civilopedia-editor-controls, .civilopedia-editor-toolbar, .civilopedia-link-panel'
+      });
+      utilityStack.appendChild(pediaDetails);
+      if (secondaryArtSlots.length > 0) {
+        const otherArtDetails = document.createElement('details');
+        otherArtDetails.className = 'reference-art-collapse unit-compact-collapse';
+        const otherArtOpenKey = 'resources:other-art';
+        otherArtDetails.open = !!state.unitUtilitySectionOpenByKey[otherArtOpenKey];
+        const otherArtSummary = document.createElement('summary');
+        otherArtSummary.textContent = `Other Art (${secondaryArtSlots.length})`;
+        otherArtDetails.appendChild(otherArtSummary);
+        otherArtDetails.addEventListener('toggle', () => {
+          state.unitUtilitySectionOpenByKey[otherArtOpenKey] = !!otherArtDetails.open;
+        });
+        const otherArtBody = document.createElement('div');
+        otherArtBody.className = 'unit-collapsible-body';
+        const artSlotsWrap = document.createElement('div');
+        artSlotsWrap.className = 'art-slot-grid';
+        secondaryArtSlots.forEach((slot) => {
+          const cardSlot = makeArtSlotCard({
+            tabKey,
+            entry,
+            slot,
+            editable: referenceEditable,
+            onChanged: () => renderActiveTab({ preserveTabScroll: true })
+          });
+          artSlotsWrap.appendChild(cardSlot);
+        });
+        otherArtBody.appendChild(artSlotsWrap);
+        otherArtDetails.appendChild(otherArtBody);
+        utilityStack.appendChild(otherArtDetails);
+      }
+      resourceUtilityStack = utilityStack.childElementCount > 0 ? utilityStack : null;
+    } else if (tabKey === 'civilizations') {
+      const utilityStack = document.createElement('div');
+      utilityStack.className = 'unit-utility-stack';
+      const pediaDetails = document.createElement('details');
+      pediaDetails.className = 'reference-art-collapse unit-compact-collapse';
+      const pediaOpenKey = 'civilizations:civilopedia';
+      pediaDetails.open = !!state.unitUtilitySectionOpenByKey[pediaOpenKey];
+      const pediaSummary = document.createElement('summary');
+      pediaSummary.textContent = 'Civilopedia';
+      attachRichTooltip(pediaSummary, formatSourceInfo(entry.sourceMeta && entry.sourceMeta.civilopediaSection1, 'Civilopedia'));
+      pediaDetails.appendChild(pediaSummary);
+      pediaDetails.addEventListener('toggle', () => {
+        state.unitUtilitySectionOpenByKey[pediaOpenKey] = !!pediaDetails.open;
+      });
+      const pediaBody = document.createElement('div');
+      pediaBody.className = 'unit-collapsible-body';
+      const editorBlock = createCivilopediaEditorBlock({
+        entry,
+        fieldKey: 'civilopedia',
+        titleText: 'Civilopedia',
+        sourceMeta: entry.sourceMeta && entry.sourceMeta.civilopediaSection1,
+        emptyText: 'Civilopedia text',
+        getValue: () => joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey),
+        setValue: (v) => { const parts = splitCivilopediaAtMarker(v); entry.civilopediaSection1 = parts.section1; entry.civilopediaSection2 = parts.section2; }
+      });
+      editorBlock.classList.remove('section-card', 'source-section');
+      const editorTop = editorBlock.querySelector(':scope > .section-top');
+      if (editorTop) {
+        const editorTitle = editorTop.querySelector('strong');
+        if (editorTitle) editorTitle.remove();
+      }
+      editorBlock.style.marginTop = '0';
+      pediaBody.appendChild(editorBlock);
+      pediaDetails.appendChild(pediaBody);
+      enableWideDetailsToggle(pediaDetails, {
+        ignoreSelectors: 'button, input, textarea, select, option, a, label, .civilopedia-editor-controls, .civilopedia-editor-toolbar, .civilopedia-link-panel'
+      });
+      utilityStack.appendChild(pediaDetails);
+      civilizationUtilityStack = utilityStack.childElementCount > 0 ? utilityStack : null;
     } else if (secondaryArtSlots.length > 0) {
       identityMeta.appendChild(artGrid);
     }
     textCol.appendChild(identityMeta);
 
     if (Array.isArray(entry.biqFields) && entry.biqFields.length > 0) {
-      const rulesMeta = (tabKey === 'units' || tabKey === 'technologies' || tabKey === 'improvements') ? null : document.createElement('div');
+      const rulesMeta = (tabKey === 'units' || tabKey === 'technologies' || tabKey === 'improvements' || tabKey === 'resources' || tabKey === 'civilizations') ? null : document.createElement('div');
       if (rulesMeta) {
         rulesMeta.className = 'section-card source-section';
         const rulesTitle = document.createElement('div');
@@ -21682,6 +22238,12 @@ function renderReferenceTab(tab, tabKey) {
           return !TECHNOLOGY_TOP_FIELD_KEYS.has(base) && !base.startsWith('prerequisite');
         });
       }
+      if (tabKey === 'civilizations') {
+        visibleRuleFields = visibleRuleFields.filter((field) => {
+          const base = normalizeRuleLookupKey(field && (field.baseKey || field.key));
+          return !CIVILIZATION_TOP_FIELD_KEYS.has(base);
+        });
+      }
       const groups = new Map();
       visibleRuleFields.forEach((field) => {
         const group = getRuleFieldGroup(tabKey, field);
@@ -21712,6 +22274,15 @@ function renderReferenceTab(tab, tabKey) {
           referenceEditable,
           groupedFields: groups,
           openCurrentTechTree
+        }));
+      } else if (tabKey === 'civilizations') {
+        rulesGrid.appendChild(renderCivilizationDenseRulesLayout({
+          tab,
+          entry,
+          tabKey,
+          selectedBaseIndex,
+          referenceEditable,
+          groupedFields: groups
         }));
       } else {
         for (const [groupName, fields] of groups.entries()) {
@@ -21757,14 +22328,6 @@ function renderReferenceTab(tab, tabKey) {
         const relCard = renderGovernmentRelationsCard(entry, referenceEditable);
         if (relCard) rulesGrid.appendChild(relCard);
       }
-      if (tabKey === 'civilizations') {
-        const diplomacySectionsCard = renderCivilizationDiplomacySectionsCard(tab, entry, referenceEditable);
-        if (diplomacySectionsCard) rulesGrid.appendChild(diplomacySectionsCard);
-        const buildCard = renderCivilizationBuildPriorityCard(entry, referenceEditable);
-        if (buildCard) rulesGrid.appendChild(buildCard);
-        const nameListsCard = renderCivilizationNameListsCard(entry, referenceEditable);
-        if (nameListsCard) rulesGrid.appendChild(nameListsCard);
-      }
       if (rulesMeta) {
         rulesMeta.appendChild(rulesGrid);
         deferredInfoBlocks.push(rulesMeta);
@@ -21775,8 +22338,12 @@ function renderReferenceTab(tab, tabKey) {
 
     if (tabKey === 'improvements') {
       if (improvementUtilityStack) textCol.appendChild(improvementUtilityStack);
+    } else if (tabKey === 'civilizations') {
+      if (civilizationUtilityStack) textCol.appendChild(civilizationUtilityStack);
     } else if (tabKey === 'technologies') {
       if (technologyUtilityStack) textCol.appendChild(technologyUtilityStack);
+    } else if (tabKey === 'resources') {
+      if (resourceUtilityStack) textCol.appendChild(resourceUtilityStack);
     } else if (tabKey !== 'units' && referenceEditable) {
       textCol.appendChild(createCivilopediaEditorBlock({
         entry,
@@ -21787,7 +22354,7 @@ function renderReferenceTab(tab, tabKey) {
         getValue: () => joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey),
         setValue: (v) => { const parts = splitCivilopediaAtMarker(v); entry.civilopediaSection1 = parts.section1; entry.civilopediaSection2 = parts.section2; }
       }));
-    } else if (tabKey !== 'units') {
+    } else if (tabKey !== 'units' && tabKey !== 'resources') {
       const textBlock = document.createElement('div');
       textBlock.className = 'section-card source-section';
       textBlock.style.marginTop = '8px';

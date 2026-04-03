@@ -13,6 +13,12 @@
   --sticky-search-top: var(--sticky-header-height);
   --sticky-search-height: 36px;
   --sticky-pane-top: calc(var(--sticky-search-top) + var(--sticky-search-height));
+  --search-border: rgba(84, 78, 116, 0);
+  --search-border-hover: rgba(95, 123, 205, 0.18);
+  --search-focus-border: rgba(76, 118, 215, 0.76);
+  --search-focus-glow: rgba(111, 146, 233, 0.24);
+  --search-focus-warm: rgba(228, 127, 47, 0.18);
+  --search-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 245, 255, 0.94));
 }
 
 * {
@@ -70,10 +76,16 @@ body::after {
 
 body.mode-standard {
   --mode: standard;
+  --search-focus-border: rgba(220, 126, 44, 0.82);
+  --search-focus-glow: rgba(233, 149, 76, 0.22);
+  --search-focus-warm: rgba(255, 214, 175, 0.34);
 }
 
 body.mode-scenario {
   --mode: scenario;
+  --search-focus-border: rgba(112, 96, 218, 0.78);
+  --search-focus-glow: rgba(139, 123, 235, 0.24);
+  --search-focus-warm: rgba(191, 182, 255, 0.22);
 }
 
 body.mode-standard::before {
@@ -1081,10 +1093,44 @@ button.danger:hover {
 }
 
 .app-search-input {
+  -webkit-appearance: none;
+  appearance: none;
   font: inherit;
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.1;
+  color: #2c3555;
+  border: 1px solid var(--search-border);
+  background: var(--search-bg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 1px 2px rgba(41, 31, 74, 0.04);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+  caret-color: var(--search-focus-border);
+}
+
+.app-search-input:hover {
+  border-color: var(--search-border-hover);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 4px 12px rgba(41, 31, 74, 0.05);
+}
+
+.app-search-input:focus,
+.app-search-input:focus-visible {
+  outline: none;
+  border-color: var(--search-focus-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(249, 247, 255, 0.97));
+  box-shadow:
+    inset 0 0 0 1.5px var(--search-focus-border),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 6px 18px -14px var(--search-focus-warm);
 }
 
 .app-search-input::-webkit-search-cancel-button {
@@ -2046,6 +2092,7 @@ button.danger:hover {
   align-self: start;
   background: rgba(72, 78, 98, 0.055);
   border-radius: 10px;
+  height: 100%;
   padding: 4px 6px;
 }
 
@@ -3060,7 +3107,7 @@ button.danger:hover {
 
 @media (max-width: 1380px) {
   .reference-detail-layout.reference-detail-layout-technologies:not(.context-hidden) {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 280px);
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 300px);
     overflow: hidden;
   }
 
@@ -3155,6 +3202,29 @@ button.danger:hover {
     position: sticky;
     min-width: 0;
   }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 300px);
+    overflow: hidden;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .reference-sidebar-art,
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .reference-section-nav,
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .art-slot-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .art-slot-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .reference-nav-col {
+    position: sticky;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 1300px) {
@@ -3164,6 +3234,16 @@ button.danger:hover {
   }
 
   .reference-detail-layout.reference-detail-layout-technologies:not(.context-hidden) .technology-boolean-matrix {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-dashboard-grid,
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-top-grid,
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-free-tech-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-boolean-matrix {
     grid-template-columns: 1fr;
   }
 }
@@ -3181,6 +3261,21 @@ button.danger:hover {
   }
 
   .reference-detail-layout.reference-detail-layout-technologies:not(.context-hidden) .technology-boolean-matrix {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    overflow: hidden;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-dashboard-grid,
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-top-grid,
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-free-tech-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-detail-layout.reference-detail-layout-civilizations:not(.context-hidden) .civilization-boolean-matrix {
     grid-template-columns: 1fr;
   }
 }
@@ -3353,7 +3448,7 @@ details > summary:focus-visible {
 }
 
 .unit-compact-collapse {
-  margin-top: 2px;
+  margin: 2px 0;
 }
 
 .reference-art-collapse summary {
@@ -3375,6 +3470,7 @@ details > summary:focus-visible {
   display: grid;
   gap: 1px;
   margin-top: 4px;
+  margin-bottom: 4px;
 }
 
 .unit-collapsible-section {
@@ -3922,6 +4018,370 @@ details > summary:focus-visible {
 .technology-bottom-stack {
   display: grid;
   gap: 10px;
+}
+
+.civilization-rules-layout {
+  display: grid;
+  gap: 10px;
+}
+
+.civilization-main-board {
+  display: grid;
+  gap: 10px;
+}
+
+.civilization-top-grid {
+  display: grid;
+  gap: 10px;
+  align-items: start;
+}
+
+.civilization-top-grid-primary {
+  grid-template-columns: repeat(2, minmax(340px, 1fr));
+}
+
+.civilization-top-grid-secondary {
+  grid-template-columns: repeat(2, minmax(340px, 1fr));
+}
+
+.civilization-rules-layout[data-layout-mode="two"] .civilization-top-grid-primary,
+.civilization-rules-layout[data-layout-mode="two"] .civilization-top-grid-secondary,
+.civilization-rules-layout[data-layout-mode="two"] .civilization-dashboard-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.civilization-rules-layout[data-layout-mode="two"] .civilization-dashboard-col {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+.civilization-rules-layout[data-layout-mode="one"] .civilization-top-grid-primary,
+.civilization-rules-layout[data-layout-mode="one"] .civilization-top-grid-secondary,
+.civilization-rules-layout[data-layout-mode="one"] .civilization-dashboard-grid,
+.civilization-rules-layout[data-layout-mode="one"] .civilization-free-tech-grid,
+.civilization-rules-layout[data-layout-mode="one"] .civilization-boolean-matrix {
+  grid-template-columns: 1fr;
+}
+
+.civilization-rules-layout[data-layout-mode="one"] .civilization-top-cell-control {
+  grid-template-columns: 1fr;
+}
+
+.civilization-top-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(73, 69, 98, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 20px rgba(38, 28, 72, 0.06);
+}
+
+.civilization-top-cell-label {
+  margin-bottom: 0;
+  font-size: 0.72rem;
+}
+
+.civilization-top-cell-control {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.civilization-top-cell-inline .civilization-top-cell-control {
+  grid-template-columns: 1fr;
+}
+
+.civilization-top-cell-inline .civilization-top-field-wrap .rule-row {
+  grid-template-columns: minmax(150px, max-content) minmax(220px, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.civilization-top-cell-inline .civilization-top-field-wrap .field-meta {
+  margin: 0;
+}
+
+.civilization-top-field-wrap,
+.civilization-top-field-wrap .rule-control,
+.civilization-top-field-wrap .tech-picker,
+.civilization-top-field-wrap .tech-picker-head,
+.civilization-top-field-wrap .tech-picker-btn {
+  min-width: 0;
+}
+
+.civilization-top-field-wrap .rule-row {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 2px 0;
+  align-items: start;
+}
+
+.civilization-top-field-wrap-compact .rule-row {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.civilization-top-field-wrap .field-meta {
+  margin-bottom: 0;
+}
+
+.civilization-top-field-wrap .rule-control {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.civilization-top-field-wrap .rule-control input[type="number"] {
+  width: min(110px, 100%);
+}
+
+.civilization-top-field-wrap .rule-control select,
+.civilization-top-field-wrap .rule-control .tech-picker,
+.civilization-top-field-wrap .rule-control input[type="text"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.civilization-free-tech-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.civilization-animation-card {
+  padding: 10px;
+}
+
+.civilization-animation-table {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.civilization-animation-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #435073;
+}
+
+.civilization-animation-era {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #31405f;
+  padding-top: 8px;
+}
+
+.civilization-animation-cell,
+.civilization-animation-cell .civilization-top-field-wrap {
+  min-width: 0;
+}
+
+.civilization-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.civilization-matrix-card {
+  padding: 10px;
+}
+
+.civilization-boolean-matrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+}
+
+.civilization-boolean-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  min-height: 0;
+  padding: 3px 2px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #33405f;
+  font-size: 0.76rem;
+  line-height: 1.15;
+  cursor: pointer !important;
+}
+
+.civilization-boolean-item input[type="checkbox"] {
+  margin: 1px 0 0;
+  accent-color: #1aa79c;
+  cursor: pointer !important;
+}
+
+.civilization-boolean-item span,
+.civilization-boolean-item * {
+  cursor: pointer !important;
+}
+
+.civilization-boolean-item.active {
+  color: #183f4c;
+}
+
+.civilization-boolean-item:hover {
+  background: rgba(239, 245, 255, 0.75);
+  border-color: rgba(88, 122, 196, 0.14);
+}
+
+.civilization-build-priority-toggle {
+  display: inline-grid;
+  grid-template-columns: 18px;
+  justify-content: center;
+  align-items: center;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  margin: 0 auto;
+}
+
+.civilization-build-priority-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
+.civilization-bottom-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.civilization-bottom-stack .rule-group-card,
+.civilization-dashboard-grid .rule-group-card {
+  margin-bottom: 0;
+}
+
+.civilization-name-lists-grid {
+  display: grid;
+  gap: 0;
+}
+
+.civilization-name-list-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 0;
+}
+
+.civilization-name-list-panel + .civilization-name-list-panel {
+  border-top: 1px solid rgba(73, 69, 98, 0.12);
+  margin-top: 4px;
+}
+
+.civilization-name-list-panel-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #46588e;
+  line-height: 1.2;
+}
+
+.civilization-name-list-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.civilization-name-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.civilization-name-list-toolbar-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #46588e;
+  line-height: 1.2;
+}
+
+.civilization-name-list-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #5a668a;
+}
+
+.civilization-name-list-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.civilization-name-list-items {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.civilization-name-list-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.civilization-name-list-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(236, 240, 249, 0.95);
+  color: #4b5a84;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.civilization-name-list-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.civilization-name-list-add-btn,
+.civilization-name-list-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.civilization-name-list-remove-btn {
+  color: #8b4b38;
+}
+
+.civilization-name-list-remove-btn .remove-icon {
+  margin-right: 0;
+}
+
+.civilization-name-list-add-btn:disabled,
+.civilization-name-list-add-btn[aria-disabled="true"] {
+  opacity: 0.38;
+  cursor: not-allowed;
+  color: #7c86a2;
+  background: rgba(246, 248, 253, 0.95);
+}
+
+.civilization-name-list-empty,
+.civilization-name-list-readonly {
+  color: #5c688d;
 }
 
 .improvement-bottom-stack {
@@ -7118,7 +7578,7 @@ button.unit-ini-delete-btn:disabled {
   background: rgba(255, 255, 255, 0.66);
   color: #4d5880;
   font-size: 0.56rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 1.3;
 }

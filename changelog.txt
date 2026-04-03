@@ -1,4 +1,13 @@
 * RELEASE 27.2
+- Restyled shared search-field active borders to use the app theme accents with a brighter focus ring and subtle glow instead of the old flat gray focus treatment.
+- Tuned the shared search-field rest state back toward the previous low-border look and moved the focus emphasis inward so the active edge no longer gets clipped at container boundaries.
+- Balanced the spacing around shared compact collapsible stacks so the gap below sections like `Other Art` matches the gap above `Civilopedia`.
+- Normalized compact collapsible section spacing so shared panels like `Civilopedia`, `Other Art`, and `Animation` use the same gap and visual rhythm across tabs.
+- Changed `Resources -> Type` to use the same segmented choice UI style as `Improvements -> Category` instead of a dropdown.
+- Removed the extra Resources rules wrapper/header so the tab no longer shows a `Rules` card title or the `From BIQ section: GOOD` subtitle above its BIQ field groups.
+- Changed the Resources tab so its Civilopedia section now appears in a collapsible panel instead of always being expanded.
+- Removed the extra top gap above the `C3X` tab search bar so the base-config editor header aligns with the other editor tabs.
+- Reworked the Civs tab into a denser responsive dashboard layout with compact identity/personality/free-tech boards, matrix-style traits and governor controls, a smarter multi-column resize model like Techs and Improvements, the same optional right-hand sidebar toggle, and a collapsible Civilopedia section.
 - Reworked the Techs tab into a denser dashboard layout with a compact top board for era/cost/prerequisites/tree controls, matrix-style capability groups, the same optional right-hand sidebar toggle used by Units and Improvements, and a collapsible Civilopedia section while keeping the sidebar visible by default.
 - Reworked the Improvements tab into a first-pass dense dashboard layout with grouped columns, more compact top metadata, and the same optional right-hand sidebar toggle used by the Units tab; the sidebar still defaults to visible for Improvements.
 - Refined the native search-bar clear `X` hover treatment to use a rounded background highlight instead of filter-only feedback, making the affordance feel more button-like.
