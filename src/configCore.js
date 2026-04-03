@@ -3368,6 +3368,12 @@ function normalizePediaIconsLines(lines) {
     .filter((line) => !!line && !line.startsWith(';'));
 }
 
+function toWindowsPediaIconsLine(line) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return '';
+  return /[\\/]/.test(trimmed) ? trimmed.replace(/\//g, '\\') : trimmed;
+}
+
 function serializePediaIconsDocumentWithOrder(doc) {
   const order = Array.isArray(doc && doc.order) ? doc.order : [];
   const blocks = (doc && doc.blocks) || {};
@@ -3381,7 +3387,7 @@ function serializePediaIconsDocumentWithOrder(doc) {
     const heading = headingRaw.length > 0 ? headingRaw : String(k);
     out.push(`#${heading}`);
     const lines = Array.isArray(blocks[k]) ? blocks[k] : [];
-    lines.forEach((line) => out.push(String(line || '')));
+    lines.forEach((line) => out.push(toWindowsPediaIconsLine(line)));
   });
   const serialized = out.join('\n');
   return hadTrailingNewline ? ensureTrailingNewline(serialized) : serialized;
@@ -7643,6 +7649,39 @@ function pickScenarioReferenceArtTargetRelativePath({ tabKey, group, originalPat
   return normalizeRelativePath(path.join('Art', 'Civilopedia', 'Icons', baseName));
 }
 
+function stripScenarioFolderPrefixFromRelativeArtPath(rawPath, candidateFolderNames = []) {
+  const normalized = normalizeRelativePath(rawPath);
+  if (!normalized) return '';
+  const lowerNormalized = normalized.toLowerCase();
+  for (const candidate of candidateFolderNames) {
+    const prefix = normalizeRelativePath(candidate);
+    if (!prefix) continue;
+    const lowerPrefix = prefix.toLowerCase();
+    if (!lowerNormalized.startsWith(`${lowerPrefix}/`)) continue;
+    const remainder = normalized.slice(prefix.length + 1);
+    if (/^(art|text)\//i.test(remainder)) {
+      return remainder;
+    }
+  }
+  return normalized;
+}
+
+function normalizeScenarioRelativeArtReferencePath(rawPath, entry, targetContentRoot) {
+  const normalized = normalizeAssetReferencePath(rawPath);
+  if (!normalized || isAbsoluteFilesystemPath(normalized)) return normalized;
+  const candidates = [];
+  const targetBaseName = path.basename(String(targetContentRoot || '').trim());
+  if (targetBaseName) candidates.push(targetBaseName);
+  const importScenarioPath = String(entry && entry._importScenarioPath || '').trim();
+  if (importScenarioPath) {
+    const importScenarioDirName = path.basename(resolveScenarioDir(importScenarioPath));
+    const importScenarioStem = path.parse(importScenarioPath).name;
+    if (importScenarioDirName) candidates.push(importScenarioDirName);
+    if (importScenarioStem) candidates.push(importScenarioStem);
+  }
+  return stripScenarioFolderPrefixFromRelativeArtPath(normalized, candidates);
+}
+
 function localizeScenarioReferenceArtAssets({ tabs, targetContentRoot, plannedWrites, saveReport }) {
   if (!targetContentRoot || !tabs) return { ok: true };
   const queued = new Map();
@@ -7664,8 +7703,16 @@ function localizeScenarioReferenceArtAssets({ tabs, targetContentRoot, plannedWr
         const originalValues = Array.isArray(entry && entry[originalFieldKey]) ? entry[originalFieldKey] : [];
         let changed = false;
         sourceValues.forEach((rawValue, index) => {
-          const normalized = normalizeAssetReferencePath(rawValue);
-          if (!isAbsoluteFilesystemPath(normalized)) return;
+          const normalized = normalizeScenarioRelativeArtReferencePath(rawValue, entry, targetContentRoot);
+          if (!normalized) return;
+          if (!isAbsoluteFilesystemPath(normalized)) {
+            const currentValue = normalizeAssetReferencePath(rawValue);
+            if (normalized !== currentValue) {
+              sourceValues[index] = normalized;
+              changed = true;
+            }
+            return;
+          }
           let stats = null;
           try {
             stats = fs.statSync(normalized);
@@ -7720,6 +7767,61 @@ function normalizeUnitIniActionRows(rows) {
   return out;
 }
 
+function toWindowsRelativeAssetPath(rawPath) {
+  const normalized = normalizeRelativePath(rawPath);
+  if (!normalized) return '';
+  return normalized.replace(/\//g, '\\');
+}
+
+function normalizeUnitIniAnimationReferencePath(rawPath, { entry, targetPath, scenarioDir }) {
+  const normalized = normalizeAssetReferencePath(rawPath);
+  if (!normalized) return '';
+  const targetDir = path.dirname(String(targetPath || '').trim());
+  if (!targetDir) return toWindowsRelativeAssetPath(normalized);
+  if (isAbsoluteFilesystemPath(normalized)) {
+    return toWindowsRelativeAssetPath(path.relative(targetDir, normalized));
+  }
+  const scenarioRelative = normalizeScenarioRelativeArtReferencePath(normalized, entry, scenarioDir);
+  if (/^art\/units\//i.test(scenarioRelative)) {
+    const scenarioRoot = String(scenarioDir || '').trim();
+    if (scenarioRoot) {
+      const absolute = path.join(scenarioRoot, scenarioRelative.replace(/\//g, path.sep));
+      return toWindowsRelativeAssetPath(path.relative(targetDir, absolute));
+    }
+  }
+  const animationName = String(entry && entry.animationName || '').trim();
+  if (animationName) {
+    const prefix = `${animationName}/`;
+    if (scenarioRelative.toLowerCase().startsWith(prefix.toLowerCase())) {
+      return toWindowsRelativeAssetPath(scenarioRelative.slice(prefix.length));
+    }
+  }
+  return toWindowsRelativeAssetPath(scenarioRelative);
+}
+
+function normalizeUnitIniSectionsForSave(sections, { entry, targetPath, scenarioDir }) {
+  const out = [];
+  (Array.isArray(sections) ? sections : []).forEach((section) => {
+    const name = String(section && section.name || '').trim();
+    if (!name) return;
+    const fields = [];
+    const isAnimations = name.toUpperCase() === 'ANIMATIONS';
+    (Array.isArray(section && section.fields) ? section.fields : []).forEach((field) => {
+      const key = String(field && field.key || '').trim();
+      if (!key) return;
+      const rawValue = String(field && field.value || '');
+      fields.push({
+        key,
+        value: isAnimations
+          ? normalizeUnitIniAnimationReferencePath(rawValue, { entry, targetPath, scenarioDir })
+          : rawValue
+      });
+    });
+    out.push({ name, fields });
+  });
+  return out;
+}
+
 function normalizeUnitIniSections(sections) {
   const out = [];
   (Array.isArray(sections) ? sections : []).forEach((section) => {
@@ -7760,14 +7862,15 @@ function collectUnitIniReferenceEdits(tabs, scenarioDir) {
     const animationName = String(entry.animationName || '').trim();
     if (!animationName) return;
     const model = entry.unitIniEditor;
-    const nextSections = normalizeUnitIniSections(model.sections);
+    const targetPath = path.join(scenarioDir, 'Art', 'Units', animationName, `${animationName}.ini`);
+    const nextSections = normalizeUnitIniSectionsForSave(model.sections, { entry, targetPath, scenarioDir });
     const prevSections = normalizeUnitIniSections(model.originalSections);
     if (nextSections.length > 0 || prevSections.length > 0) {
       if (JSON.stringify(nextSections) === JSON.stringify(prevSections)) return;
       out.push({
         animationName,
         sourcePath: String(model.iniPath || '').trim(),
-        targetPath: path.join(scenarioDir, 'Art', 'Units', animationName, `${animationName}.ini`),
+        targetPath,
         sections: nextSections,
         originalSections: prevSections,
         actions: normalizeUnitIniActionRows(model.actions),
@@ -7775,13 +7878,16 @@ function collectUnitIniReferenceEdits(tabs, scenarioDir) {
       });
       return;
     }
-    const nextRows = normalizeUnitIniActionRows(model.actions);
+    const nextRows = normalizeUnitIniActionRows(model.actions).map((row) => ({
+      ...row,
+      relativePath: normalizeUnitIniAnimationReferencePath(row.relativePath, { entry, targetPath, scenarioDir })
+    }));
     const prevRows = normalizeUnitIniActionRows(model.originalActions);
     if (JSON.stringify(nextRows) === JSON.stringify(prevRows)) return;
     out.push({
       animationName,
       sourcePath: String(model.iniPath || '').trim(),
-      targetPath: path.join(scenarioDir, 'Art', 'Units', animationName, `${animationName}.ini`),
+      targetPath,
       actions: nextRows,
       originalActions: prevRows
     });

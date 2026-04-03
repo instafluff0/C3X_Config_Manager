@@ -1,3 +1,16 @@
+* RELEASE 27.2
+- Refined the native search-bar clear `X` hover treatment to use a rounded background highlight instead of filter-only feedback, making the affordance feel more button-like.
+- Styled the native search-bar clear `X` affordance with a pointer cursor and hover/press feedback so clearing search feels more obviously clickable.
+- Matched shared search-bar typography to the main tab labels so search inputs now use the same family, size, and weight style as tabs like `C3X`, `Techs`, and `Civs`.
+- Removed the remaining explanatory `hint` text above the search bars in the `C3X`, `Districts`, `Wonder Districts`, and `Natural Wonders` tabs to keep those editor headers tighter.
+- Removed the tab-level header strip above editor search bars, including duplicated `effective`, `editable`, and similar status pills, and pinned those search/action rows directly to the top of each tab instead.
+- Deepened the Scenario mode background tint slightly in the upper-right so it better matches the visual strength of the Standard Game mode backdrop.
+- Moved `Districts`, `Wonder Districts`, and `Natural Wonders` `+ Add` and `Delete` actions into the same inline search-row control area used by Civs, Techs, Units, and other entity editors.
+- Reworked the top header into a single inline title-and-mode-controls row, removed the separate mode status strip, and folded the app version into the lower-left credit line as a compact badge.
+- Fixed scenario `PediaIcons.txt` tech icon saves to write Windows-style relative paths like `Art\tech chooser\Icons\...`, and to strip leaked source scenario folder prefixes such as `Eldorado5\` that could crash Civ III during load.
+- Fixed scenario unit INI animation saves to rewrite scenario-root or imported `Art\Units\...` references into valid Windows-relative animation paths, preventing leaked scenario prefixes and slash-style breakage in saved unit entries.
+- Removed the redundant top-center scenario name chip so loaded scenarios are shown only in the scenario mode selector instead of being duplicated in the header.
+
 * RELEASE 27.1
 - Adjusted `C3X -> Unit Limits` row spacing to use the same card-style item layout as `Production Perfume`, making those structured entries visually consistent.
 - Removed the hover tooltip from Districts tab entries in the left-hand district list so hovering those rows no longer shows source/file metadata.

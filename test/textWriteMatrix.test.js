@@ -432,3 +432,177 @@ test('large Civilopedia file: single-entry edit keeps all other entries parseabl
   assert.equal(docTextByKey(doc, 'GCON_BULK_219'), 'Overview 219');
   assert.equal(docTextByKey(doc, 'DESC_GCON_BULK_219'), 'Description 219');
 });
+
+test('scenario save rewrites imported tech icon paths to scenario-root-relative Windows paths', () => {
+  const root = mkTmpDir();
+  const scenario = path.join(root, 'MyScenario');
+  const sourceScenario = path.join(root, 'Eldorado5');
+  const textDir = path.join(scenario, 'Text');
+  const sourceArtDir = path.join(sourceScenario, 'Art', 'tech chooser', 'Icons');
+  fs.mkdirSync(textDir, { recursive: true });
+  fs.mkdirSync(sourceArtDir, { recursive: true });
+
+  const pediaIconsPath = path.join(textDir, 'PediaIcons.txt');
+  fs.writeFileSync(pediaIconsPath, Buffer.from([
+    '#TECH_003',
+    'Art\\tech chooser\\Icons\\old-small.pcx',
+    '#TECH_003_LARGE',
+    'Art\\tech chooser\\Icons\\old-large.pcx',
+    ''
+  ].join('\n'), 'latin1'));
+  fs.writeFileSync(path.join(sourceArtDir, 'Pirate_Small.pcx'), 'small');
+  fs.writeFileSync(path.join(sourceArtDir, 'Pirate_Large.pcx'), 'large');
+
+  const tabs = {
+    civilizations: {
+      sourceDetails: {
+        pediaIconsScenarioWrite: pediaIconsPath
+      }
+    },
+    technologies: {
+      entries: [{
+        civilopediaKey: 'TECH_003',
+        isNew: true,
+        _importScenarioPath: path.join(root, 'Eldorado5.biq'),
+        iconPaths: [
+          'Eldorado5/Art/tech chooser/Icons/Pirate_Small.pcx',
+          'Eldorado5/Art/tech chooser/Icons/Pirate_Large.pcx'
+        ],
+        originalIconPaths: [
+          'Eldorado5/Art/tech chooser/Icons/Pirate_Small.pcx',
+          'Eldorado5/Art/tech chooser/Icons/Pirate_Large.pcx'
+        ],
+        racePaths: [],
+        originalRacePaths: [],
+        animationName: '',
+        originalAnimationName: '',
+        biqFields: []
+      }],
+      recordOps: [{
+        op: 'add',
+        newRecordRef: 'TECH_003',
+        importArtFrom: path.join(root, 'Eldorado5.biq')
+      }]
+    }
+  };
+
+  const result = saveBundle({
+    mode: 'scenario',
+    c3xPath: root,
+    civ3Path: root,
+    scenarioPath: scenario,
+    tabs
+  });
+
+  assert.equal(result.ok, true, String(result.error || 'save failed'));
+  const saved = fs.readFileSync(pediaIconsPath).toString('latin1');
+  assert.match(saved, /#TECH_003\r?\nArt\\tech chooser\\Icons\\Pirate_Small\.pcx/);
+  assert.match(saved, /#TECH_003_LARGE\r?\nArt\\tech chooser\\Icons\\Pirate_Large\.pcx/);
+  assert.doesNotMatch(saved, /Eldorado5[\\/]/);
+  assert.deepEqual(tabs.technologies.entries[0].iconPaths, [
+    'Art/tech chooser/Icons/Pirate_Small.pcx',
+    'Art/tech chooser/Icons/Pirate_Large.pcx'
+  ]);
+});
+
+test('scenario save rewrites imported generic icon and race path blocks to scenario-root-relative Windows paths', () => {
+  const root = mkTmpDir();
+  const scenario = path.join(root, 'MyScenario');
+  const textDir = path.join(scenario, 'Text');
+  fs.mkdirSync(textDir, { recursive: true });
+
+  const pediaIconsPath = path.join(textDir, 'PediaIcons.txt');
+  fs.writeFileSync(pediaIconsPath, Buffer.from([
+    '#ICON_GOOD_TEST_RESOURCE',
+    'Art\\Civilopedia\\Icons\\Resources\\old-large.pcx',
+    'Art\\Civilopedia\\Icons\\Resources\\old-small.pcx',
+    '#ICON_RACE_AMAZONIANS',
+    'Art\\Civilopedia\\Icons\\Races\\old-race-large.pcx',
+    'Art\\Civilopedia\\Icons\\Races\\old-race-small.pcx',
+    '#RACE_AMAZONIANS',
+    'Art\\Advisors\\old_all.pcx',
+    'Art\\Leaderheads\\old large.pcx',
+    ''
+  ].join('\n'), 'latin1'));
+
+  const tabs = {
+    civilizations: {
+      sourceDetails: {
+        pediaIconsScenarioWrite: pediaIconsPath
+      },
+      entries: [{
+        civilopediaKey: 'RACE_AMAZONIANS',
+        isNew: true,
+        _importScenarioPath: path.join(root, 'Eldorado5.biq'),
+        iconPaths: [
+          'Eldorado5/Art/Civilopedia/Icons/Races/AmazoniansLarge.pcx',
+          'Eldorado5/Art/Civilopedia/Icons/Races/AmazoniansSmall.pcx'
+        ],
+        originalIconPaths: [
+          'Eldorado5/Art/Civilopedia/Icons/Races/AmazoniansLarge.pcx',
+          'Eldorado5/Art/Civilopedia/Icons/Races/AmazoniansSmall.pcx'
+        ],
+        racePaths: [
+          'Eldorado5/Art/Advisors/amazonians_all.pcx',
+          'Eldorado5/Art/Leaderheads/amazonians large.pcx'
+        ],
+        originalRacePaths: [
+          'Eldorado5/Art/Advisors/amazonians_all.pcx',
+          'Eldorado5/Art/Leaderheads/amazonians large.pcx'
+        ],
+        animationName: '',
+        originalAnimationName: '',
+        biqFields: []
+      }],
+      recordOps: []
+    },
+    resources: {
+      entries: [{
+        civilopediaKey: 'GOOD_TEST_RESOURCE',
+        isNew: true,
+        _importScenarioPath: path.join(root, 'Eldorado5.biq'),
+        iconPaths: [
+          'Eldorado5/Art/Civilopedia/Icons/Resources/NewLarge.pcx',
+          'Eldorado5/Art/Civilopedia/Icons/Resources/NewSmall.pcx'
+        ],
+        originalIconPaths: [
+          'Eldorado5/Art/Civilopedia/Icons/Resources/NewLarge.pcx',
+          'Eldorado5/Art/Civilopedia/Icons/Resources/NewSmall.pcx'
+        ],
+        racePaths: [],
+        originalRacePaths: [],
+        animationName: '',
+        originalAnimationName: '',
+        biqFields: []
+      }],
+      recordOps: []
+    }
+  };
+
+  const result = saveBundle({
+    mode: 'scenario',
+    c3xPath: root,
+    civ3Path: root,
+    scenarioPath: scenario,
+    tabs
+  });
+
+  assert.equal(result.ok, true, String(result.error || 'save failed'));
+  const saved = fs.readFileSync(pediaIconsPath).toString('latin1');
+  assert.match(saved, /#ICON_GOOD_TEST_RESOURCE\r?\nArt\\Civilopedia\\Icons\\Resources\\NewLarge\.pcx\r?\nArt\\Civilopedia\\Icons\\Resources\\NewSmall\.pcx/);
+  assert.match(saved, /#ICON_RACE_AMAZONIANS\r?\nArt\\Civilopedia\\Icons\\Races\\AmazoniansLarge\.pcx\r?\nArt\\Civilopedia\\Icons\\Races\\AmazoniansSmall\.pcx/);
+  assert.match(saved, /#RACE_AMAZONIANS\r?\nArt\\Advisors\\amazonians_all\.pcx\r?\nArt\\Leaderheads\\amazonians large\.pcx/);
+  assert.doesNotMatch(saved, /Eldorado5[\\/]/);
+  assert.deepEqual(tabs.resources.entries[0].iconPaths, [
+    'Art/Civilopedia/Icons/Resources/NewLarge.pcx',
+    'Art/Civilopedia/Icons/Resources/NewSmall.pcx'
+  ]);
+  assert.deepEqual(tabs.civilizations.entries[0].iconPaths, [
+    'Art/Civilopedia/Icons/Races/AmazoniansLarge.pcx',
+    'Art/Civilopedia/Icons/Races/AmazoniansSmall.pcx'
+  ]);
+  assert.deepEqual(tabs.civilizations.entries[0].racePaths, [
+    'Art/Advisors/amazonians_all.pcx',
+    'Art/Leaderheads/amazonians large.pcx'
+  ]);
+});
