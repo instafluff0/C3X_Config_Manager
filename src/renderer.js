@@ -146,6 +146,7 @@ const state = {
   civilopediaEditorOpen: {},
   civilopediaEditSessionByKey: {},
   civilopediaPreviewVisible: {},
+  unitUtilitySectionOpenByKey: {},
   referenceSectionNavCleanup: null,
   dirtyTabCounts: {},
   dirtyReferenceKeysByTab: {},
@@ -397,9 +398,6 @@ const el = {
   pathsToggle: document.getElementById('paths-toggle'),
   pathsSummary: document.getElementById('paths-summary'),
   globalSearchBtn: document.getElementById('global-search-btn'),
-  modeStateBadge: document.getElementById('mode-state-badge'),
-  modeStateDetail: document.getElementById('mode-state-detail'),
-  scenarioTitleChip: document.getElementById('scenario-title-chip'),
   loadingOverlay: document.getElementById('loading-overlay'),
   loadingText: document.getElementById('loading-text'),
   unsavedModalOverlay: document.getElementById('unsaved-modal-overlay'),
@@ -3205,30 +3203,6 @@ function getLoadedScenarioName(bundle = null) {
   return stripBiqExtension(getPathTail(biqPath));
 }
 
-function updateScenarioTitleChip(bundle = null) {
-  if (!el.scenarioTitleChip || !state.settings) return;
-  const shouldShow = state.settings.mode === 'scenario' && !!bundle;
-  if (!shouldShow) {
-    el.scenarioTitleChip.classList.add('hidden');
-    el.scenarioTitleChip.textContent = 'Scenario: (not loaded)';
-    el.scenarioTitleChip.removeAttribute('title');
-    return;
-  }
-  const scenarioName = getLoadedScenarioName(bundle);
-  if (!scenarioName) {
-    el.scenarioTitleChip.classList.add('hidden');
-    el.scenarioTitleChip.textContent = 'Scenario: (not loaded)';
-    el.scenarioTitleChip.removeAttribute('title');
-    return;
-  }
-  el.scenarioTitleChip.classList.remove('hidden');
-  el.scenarioTitleChip.textContent = `Scenario: ${scenarioName}`;
-  const biqSource = String((bundle.biq && bundle.biq.sourcePath) || (bundle.tabs && bundle.tabs.map && bundle.tabs.map.sourcePath) || '');
-  if (biqSource) {
-    el.scenarioTitleChip.title = biqSource;
-  }
-}
-
 function updatePathsSummary() {
   if (!el.pathsSummary || !state.settings) return;
   const modeLabel = state.settings.mode === 'scenario' ? 'Scenario' : 'Standard Game';
@@ -3973,39 +3947,7 @@ function setPathsCollapsed(collapsed) {
 }
 
 function updateModeState(bundle = null) {
-  if (!state.settings) return;
-  const modeLabel = state.settings.mode === 'scenario' ? 'Scenario' : 'Standard Game';
-  if (el.modeStateBadge) {
-    el.modeStateBadge.textContent = modeLabel;
-  }
-  if (state.settings.mode !== 'scenario') {
-    updateScenarioTitleChip(null);
-  } else if (!bundle) {
-    updateScenarioTitleChip(null);
-  } else {
-    updateScenarioTitleChip(bundle);
-  }
-  if (!el.modeStateDetail) return;
-  if (bundle && bundle.scenarioPath && state.settings.mode === 'scenario') {
-    el.modeStateDetail.textContent = `Loaded from ${compactPathFromCiv3Root(bundle.scenarioPath)}`;
-    updateScenarioTitleChip(bundle);
-    return;
-  }
-  if (bundle && state.settings.mode !== 'scenario') {
-    el.modeStateDetail.textContent = 'Loaded from standard game files';
-    updateScenarioTitleChip(null);
-    return;
-  }
-  if (state.settings.mode === 'scenario') {
-    if (!state.settings.scenarioPath) {
-      el.modeStateDetail.textContent = 'Waiting for scenario .biq';
-    } else {
-      el.modeStateDetail.textContent = `Selected ${getPathTail(state.settings.scenarioPath)} (not loaded yet)`;
-    }
-    return;
-  }
-  el.modeStateDetail.textContent = 'Ready to load standard game files';
-  updateScenarioTitleChip(null);
+  void bundle;
 }
 
 function setLoadingUi(isLoading, text = 'Loading configs...') {
@@ -6755,17 +6697,6 @@ function renderBaseTab(tab) {
 
     return { primary, override };
   };
-
-  const header = document.createElement('div');
-  header.className = 'section-editor-header sticky';
-  header.appendChild(createIcon(TAB_ICONS.base));
-  header.insertAdjacentHTML('beforeend', `<h3>${tab.title}</h3><span class="source-tag">editing: ${getActiveBaseTargetName()}</span>`);
-  wrap.appendChild(header);
-
-  const helper = document.createElement('p');
-  helper.className = 'hint';
-  helper.textContent = 'C3X core settings for this mode. default.c3x_config.ini is read-only; save writes only overrides to the active file.';
-  wrap.appendChild(helper);
 
   const baseAuditBox = createWarningBox(getLoadAuditGeneralMessages('base'), 'Quality Checks', { collapsible: true });
   if (baseAuditBox) wrap.appendChild(baseAuditBox);
@@ -12011,7 +11942,13 @@ function appendRuleFieldsToGroupCard({ groupCard, fields, entry, tabKey, selecte
     const label = document.createElement('label');
     label.className = 'field-meta';
     const displayLabel = getRuleFieldDisplayLabel(tabKey, field, spec);
-    label.textContent = displayLabel;
+    if (groupCard && groupCard.classList && groupCard.classList.contains('unit-prereq-compact-cell')) {
+      const strong = document.createElement('strong');
+      strong.textContent = displayLabel;
+      label.appendChild(strong);
+    } else {
+      label.textContent = displayLabel;
+    }
     const ruleFieldKey = String(field.baseKey || field.key || '');
     attachRichTooltip(
       label,
@@ -14451,7 +14388,9 @@ function renderUnitResourcePrereqEditor({ requiredTechField, fields, entry, tabK
     attachRichTooltip(techWrap, createRuleFieldTooltipText(entry, tabKey, requiredTechField));
     const techLabel = document.createElement('label');
     techLabel.className = 'field-meta';
-    techLabel.textContent = 'Required Tech';
+    const techStrong = document.createElement('strong');
+    techStrong.textContent = 'Required Tech';
+    techLabel.appendChild(techStrong);
     techWrap.appendChild(techLabel);
     const techPicker = createReferencePicker({
       options: getReferenceOptionsForField(tabKey, requiredTechField),
@@ -14488,7 +14427,9 @@ function renderUnitResourcePrereqEditor({ requiredTechField, fields, entry, tabK
     attachRichTooltip(pickerWrap, createRuleFieldTooltipText(entry, tabKey, field));
     const resourceLabel = document.createElement('label');
     resourceLabel.className = 'field-meta';
-    resourceLabel.textContent = 'Required Resources';
+    const resourceStrong = document.createElement('strong');
+    resourceStrong.textContent = 'Required Resources';
+    resourceLabel.appendChild(resourceStrong);
     if (idx !== 0) {
       resourceLabel.classList.add('unit-prereq-label-spacer');
       resourceLabel.setAttribute('aria-hidden', 'true');
@@ -18071,9 +18012,9 @@ function buildReferenceSectionNav({ tabKey, textCol, navCol }) {
       groupCards.forEach((groupCard) => addRuleGroupSection(groupCard));
     });
 
-    const utilitySections = Array.from(textCol.querySelectorAll(':scope > .unit-utility-stack > .unit-collapsible-section'));
+    const utilitySections = Array.from(textCol.querySelectorAll(':scope > .unit-utility-stack > details, :scope > details.reference-art-collapse.unit-compact-collapse'));
     utilitySections.forEach((section) => {
-      const title = extractTextWithoutButtons(section.querySelector(':scope > .section-top strong'));
+      const title = extractTextWithoutButtons(section.querySelector(':scope > summary, :scope > .section-top strong'));
       if (!title) return;
       const id = makeId(title);
       section.id = id;
@@ -19943,13 +19884,7 @@ function renderReferenceTab(tab, tabKey) {
   const wrap = document.createElement('div');
   wrap.className = 'section-editor';
   const allEntries = tab.entries || [];
-
-  const header = document.createElement('div');
-  header.className = 'section-editor-header sticky';
-  header.appendChild(createIcon(TAB_ICONS[tabKey]));
   const referenceEditable = isScenarioMode();
-  header.insertAdjacentHTML('beforeend', `<h3>${tab.title}</h3><span class="source-tag">${referenceEditable ? 'editable (scenario)' : 'read-only'}</span>`);
-  wrap.appendChild(header);
 
   const controls = document.createElement('div');
   controls.className = 'reference-filter-row';
@@ -20564,8 +20499,7 @@ function renderReferenceTab(tab, tabKey) {
     const identityMeta = document.createElement('div');
     const deferredInfoBlocks = [];
     let unitUtilityStack = null;
-    let unitPediaSection = null;
-    let unitAnimationSection = null;
+    let unitBottomArtSection = null;
     const identityGrid = document.createElement('div');
     identityGrid.className = 'kv-grid';
     const showInlineReadonlyKey = REFERENCE_TOP_NAME_EDIT_TABS.has(tabKey);
@@ -20843,22 +20777,66 @@ function renderReferenceTab(tab, tabKey) {
     if (tabKey === 'units') {
       const utilityStack = document.createElement('div');
       utilityStack.className = 'unit-utility-stack';
-      const animationDetails = document.createElement('div');
-      animationDetails.className = 'section-card source-section';
-      const animationTop = document.createElement('div');
-      animationTop.className = 'section-top';
-      const animationStrong = document.createElement('strong');
-      animationStrong.textContent = 'Animation';
-      animationTop.appendChild(animationStrong);
-      attachRichTooltip(animationTop, formatSourceInfo(entry.sourceMeta && entry.sourceMeta.animationName, 'PediaIcons'));
-      animationDetails.appendChild(animationTop);
+      const pediaDetails = document.createElement('details');
+      pediaDetails.className = 'reference-art-collapse unit-compact-collapse';
+      const pediaOpenKey = 'units:civilopedia';
+      pediaDetails.open = !!state.unitUtilitySectionOpenByKey[pediaOpenKey];
+      const pediaSummary = document.createElement('summary');
+      pediaSummary.textContent = 'Civilopedia';
+      attachRichTooltip(pediaSummary, formatSourceInfo(entry.sourceMeta && entry.sourceMeta.civilopediaSection1, 'Civilopedia'));
+      pediaDetails.appendChild(pediaSummary);
+      pediaDetails.addEventListener('toggle', () => {
+        state.unitUtilitySectionOpenByKey[pediaOpenKey] = !!pediaDetails.open;
+      });
+      const pediaBody = document.createElement('div');
+      pediaBody.className = 'unit-collapsible-body';
+      const editorBlock = createCivilopediaEditorBlock({
+        entry,
+        fieldKey: 'civilopedia',
+        titleText: 'Civilopedia',
+        sourceMeta: entry.sourceMeta && entry.sourceMeta.civilopediaSection1,
+        emptyText: 'Civilopedia text',
+        getValue: () => joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey),
+        setValue: (v) => { const parts = splitCivilopediaAtMarker(v); entry.civilopediaSection1 = parts.section1; entry.civilopediaSection2 = parts.section2; }
+      });
+      editorBlock.classList.remove('section-card', 'source-section');
+      const editorTop = editorBlock.querySelector(':scope > .section-top');
+      if (editorTop) {
+        const editorTitle = editorTop.querySelector('strong');
+        if (editorTitle) editorTitle.remove();
+      }
+      editorBlock.style.marginTop = '0';
+      pediaBody.appendChild(editorBlock);
+      pediaDetails.appendChild(pediaBody);
+      utilityStack.appendChild(pediaDetails);
+
+      const animationDetails = document.createElement('details');
+      animationDetails.className = 'reference-art-collapse unit-compact-collapse';
+      const animationOpenKey = 'units:animation';
+      animationDetails.open = !!state.unitUtilitySectionOpenByKey[animationOpenKey];
+      const animationSummary = document.createElement('summary');
+      animationSummary.textContent = 'Animation';
+      attachRichTooltip(animationSummary, formatSourceInfo(entry.sourceMeta && entry.sourceMeta.animationName, 'PediaIcons'));
+      animationDetails.appendChild(animationSummary);
+      animationDetails.addEventListener('toggle', () => {
+        state.unitUtilitySectionOpenByKey[animationOpenKey] = !!animationDetails.open;
+      });
       const animationBody = document.createElement('div');
       animationBody.className = 'unit-collapsible-body';
       renderUnitAnimationPanel(tabKey, entry, animationBody, referenceEditable, { showTitle: false });
       animationDetails.appendChild(animationBody);
-      unitAnimationSection = animationDetails;
+      utilityStack.appendChild(animationDetails);
       if (secondaryArtSlots.length > 0) {
-        const extraArtDetails = createUnitCollapsibleSection(`Other Art (${secondaryArtSlots.length})`, { open: false });
+        const extraArtDetails = document.createElement('details');
+        extraArtDetails.className = 'reference-art-collapse unit-compact-collapse';
+        const otherArtOpenKey = 'units:other-art';
+        extraArtDetails.open = !!state.unitUtilitySectionOpenByKey[otherArtOpenKey];
+        const extraArtSummary = document.createElement('summary');
+        extraArtSummary.textContent = `Other Art (${secondaryArtSlots.length})`;
+        extraArtDetails.appendChild(extraArtSummary);
+        extraArtDetails.addEventListener('toggle', () => {
+          state.unitUtilitySectionOpenByKey[otherArtOpenKey] = !!extraArtDetails.open;
+        });
         const extraArtBody = document.createElement('div');
         extraArtBody.className = 'unit-collapsible-body';
         const artSlotsWrap = document.createElement('div');
@@ -20875,7 +20853,7 @@ function renderReferenceTab(tab, tabKey) {
         });
         extraArtBody.appendChild(artSlotsWrap);
         extraArtDetails.appendChild(extraArtBody);
-        utilityStack.appendChild(extraArtDetails);
+        unitBottomArtSection = extraArtDetails;
       }
       unitUtilityStack = utilityStack.childElementCount > 0 ? utilityStack : null;
     } else if (secondaryArtSlots.length > 0) {
@@ -20990,43 +20968,7 @@ function renderReferenceTab(tab, tabKey) {
       }
     }
 
-    if (tabKey === 'units') {
-      const pediaDetails = document.createElement('div');
-      pediaDetails.className = 'section-card source-section';
-      const pediaTop = document.createElement('div');
-      pediaTop.className = 'section-top';
-      const pediaStrong = document.createElement('strong');
-      pediaStrong.textContent = 'Civilopedia';
-      pediaTop.appendChild(pediaStrong);
-      attachRichTooltip(pediaTop, formatSourceInfo(entry.sourceMeta && entry.sourceMeta.civilopediaSection1, 'Civilopedia'));
-      pediaDetails.appendChild(pediaTop);
-      const pediaBody = document.createElement('div');
-      pediaBody.className = 'unit-collapsible-body';
-      if (referenceEditable) {
-        const editorBlock = createCivilopediaEditorBlock({
-          entry,
-          fieldKey: 'civilopedia',
-          titleText: 'Civilopedia',
-          sourceMeta: entry.sourceMeta && entry.sourceMeta.civilopediaSection1,
-          emptyText: 'Civilopedia text',
-          getValue: () => joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey),
-          setValue: (v) => { const parts = splitCivilopediaAtMarker(v); entry.civilopediaSection1 = parts.section1; entry.civilopediaSection2 = parts.section2; }
-        });
-        editorBlock.classList.remove('section-card', 'source-section');
-        const editorTop = editorBlock.querySelector(':scope > .section-top');
-        if (editorTop) editorTop.remove();
-        editorBlock.style.marginTop = '0';
-        pediaBody.appendChild(editorBlock);
-      } else {
-        const textBlock = document.createElement('div');
-        textBlock.className = 'unit-civilopedia-body';
-        const combined = joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey);
-        renderCivilopediaRichText(textBlock, combined || '(No Civilopedia text found)');
-        pediaBody.appendChild(textBlock);
-      }
-      pediaDetails.appendChild(pediaBody);
-      unitPediaSection = pediaDetails;
-    } else if (referenceEditable) {
+    if (tabKey !== 'units' && referenceEditable) {
       textCol.appendChild(createCivilopediaEditorBlock({
         entry,
         fieldKey: 'civilopedia',
@@ -21036,7 +20978,7 @@ function renderReferenceTab(tab, tabKey) {
         getValue: () => joinCivilopediaFields(entry.civilopediaSection1, entry.civilopediaSection2, entry.civilopediaKey),
         setValue: (v) => { const parts = splitCivilopediaAtMarker(v); entry.civilopediaSection1 = parts.section1; entry.civilopediaSection2 = parts.section2; }
       }));
-    } else {
+    } else if (tabKey !== 'units') {
       const textBlock = document.createElement('div');
       textBlock.className = 'section-card source-section';
       textBlock.style.marginTop = '8px';
@@ -21051,11 +20993,12 @@ function renderReferenceTab(tab, tabKey) {
       renderCivilopediaRichText(textBlock, combined || '(No Civilopedia text found)');
       textCol.appendChild(textBlock);
     }
+    if (tabKey === 'units') {
+      if (unitUtilityStack) textCol.appendChild(unitUtilityStack);
+    }
     deferredInfoBlocks.forEach((block) => textCol.appendChild(block));
     if (tabKey === 'units') {
-      if (unitPediaSection) textCol.appendChild(unitPediaSection);
-      if (unitAnimationSection) textCol.appendChild(unitAnimationSection);
-      if (unitUtilityStack) textCol.appendChild(unitUtilityStack);
+      if (unitBottomArtSection) textCol.appendChild(unitBottomArtSection);
     }
     if (showContextPane) {
       buildReferenceSectionNav({ tabKey, textCol, navCol });
@@ -21290,12 +21233,6 @@ function serializeTimeProgressionList(rows, key) {
 function renderBiqTab(tab) {
   const wrap = document.createElement('div');
   wrap.className = 'section-editor';
-
-  const header = document.createElement('div');
-  header.className = 'section-editor-header sticky';
-  header.appendChild(createIcon(TAB_ICONS[state.activeTab] || TAB_ICONS.map));
-  header.insertAdjacentHTML('beforeend', `<h3>${tab.title || 'BIQ'}</h3><span class="source-tag">${tab.readOnly ? 'read-only' : 'editable (scenario)'}</span>`);
-  wrap.appendChild(header);
 
   if (tab.bridgeError) {
     const warn = document.createElement('p');
@@ -22904,12 +22841,6 @@ function renderBiqTab(tab) {
 function renderMapTab(tab) {
   const wrap = document.createElement('div');
   wrap.className = 'section-editor';
-
-  const header = document.createElement('div');
-  header.className = 'section-editor-header sticky';
-  header.appendChild(createIcon(TAB_ICONS.map));
-  header.insertAdjacentHTML('beforeend', `<h3>${tab.title || 'Map'}</h3><span class="source-tag">${tab.readOnly ? 'read-only' : 'editable (scenario)'}</span>`);
-  wrap.appendChild(header);
 
   const helper = document.createElement('p');
   helper.className = 'hint';
@@ -29685,25 +29616,10 @@ function deleteSelectedSection(tab, tabKey) {
   renderActiveTab();
 }
 
-function syncSectionStickyOffsets(container, header) {
-  if (!container || !header) return;
-  window.requestAnimationFrame(() => {
-    if (!container.isConnected || !header.isConnected) return;
-    const headerHeight = header.getBoundingClientRect().height || 0;
-    if (headerHeight > 0) {
-      container.style.setProperty('--sticky-search-top', `${headerHeight}px`);
-    } else {
-      container.style.removeProperty('--sticky-search-top');
-    }
-  });
-}
-
 function renderSectionTab(tab, tabKey) {
   const schema = SECTION_SCHEMAS[tabKey];
-  const useCompactEntityActions = tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders';
+  const useInlineFilterActions = tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders';
   const showQualityWarnings = shouldRunQualityChecks();
-  const sourceMeta = getSectionTabSourceMeta(tab);
-  const sourceFile = compactPathFromCiv3Root(sourceMeta.readPath || sourceMeta.writePath) || '(not found)';
   const districtCompatibility = (showQualityWarnings && tabKey === 'districts') ? collectDistrictCompatibilityIssuesForTab(tab) : null;
   const districtIssueIndexes = (showQualityWarnings && tabKey === 'districts') ? collectDistrictIssueIndexes(tab, districtCompatibility) : null;
   const wonderCompatibility = (showQualityWarnings && tabKey === 'wonders') ? collectWonderCompatibilityIssuesForTab(tab) : null;
@@ -29711,47 +29627,6 @@ function renderSectionTab(tab, tabKey) {
   const auditGeneralMessages = showQualityWarnings ? getLoadAuditAllMessages(tabKey) : [];
   const wrap = document.createElement('div');
   wrap.className = 'section-editor';
-
-  const header = document.createElement('div');
-  header.className = 'section-editor-header sticky';
-  header.appendChild(createIcon(TAB_ICONS[tabKey]));
-  header.insertAdjacentHTML('beforeend', `<h3>${tab.title}</h3><span class="source-tag">effective: ${prettySourceLabel(tab.effectiveSource)}</span>`);
-
-  if (useCompactEntityActions) {
-    const actionRow = document.createElement('div');
-    actionRow.className = 'reference-entity-actions section-header-actions';
-    const addSectionBtn = document.createElement('button');
-    addSectionBtn.type = 'button';
-    addSectionBtn.className = 'ghost action-add';
-    addSectionBtn.textContent = '+ Add';
-    addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
-    actionRow.appendChild(addSectionBtn);
-
-    const deleteSectionBtn = document.createElement('button');
-    deleteSectionBtn.type = 'button';
-    deleteSectionBtn.className = 'ghost action-delete';
-    deleteSectionBtn.innerHTML = '<span class="btn-icon">🗑</span>Delete';
-    deleteSectionBtn.disabled = !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0;
-    deleteSectionBtn.addEventListener('click', () => deleteSelectedSection(tab, tabKey));
-    actionRow.appendChild(deleteSectionBtn);
-    header.appendChild(actionRow);
-  } else {
-    const addSectionBtn = document.createElement('button');
-    addSectionBtn.textContent = `Add ${schema.entityName}`;
-    addSectionBtn.className = 'add-section';
-    addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
-    header.appendChild(addSectionBtn);
-  }
-  wrap.appendChild(header);
-
-  const helper = document.createElement('p');
-  helper.className = 'hint';
-  if (tabKey === 'districts') {
-    helper.textContent = `${tab.title} editor. Using ${sourceFile}. Saving writes ${isScenarioMode() ? 'scenario.districts_config.txt' : 'user.districts_config.txt'}.`;
-  } else {
-    helper.textContent = `${tab.title} editor. Saving writes ${isScenarioMode() ? 'scenario.*' : 'user.*'} files for this tab.`;
-  }
-  wrap.appendChild(helper);
 
   const auditGeneralBox = showQualityWarnings ? createWarningBox(auditGeneralMessages, 'Quality Checks', { collapsible: true }) : null;
   if (auditGeneralBox) wrap.appendChild(auditGeneralBox);
@@ -29814,6 +29689,37 @@ function renderSectionTab(tab, tabKey) {
   listSearch.placeholder = `Search ${schema.entityName.toLowerCase()}...`;
   listSearch.value = state.sectionFilter[tabKey] || '';
   listFilterRow.appendChild(listSearch);
+  const listFilterRight = document.createElement('div');
+  listFilterRight.className = 'reference-filter-right';
+  listFilterRow.appendChild(listFilterRight);
+  if (!useInlineFilterActions) {
+    const addSectionBtn = document.createElement('button');
+    addSectionBtn.type = 'button';
+    addSectionBtn.className = 'ghost action-add';
+    addSectionBtn.textContent = `+ Add ${schema.entityName}`;
+    addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
+    listFilterRight.appendChild(addSectionBtn);
+  }
+  if (useInlineFilterActions) {
+    const actionRow = document.createElement('div');
+    actionRow.className = 'reference-entity-actions';
+    const addSectionBtn = document.createElement('button');
+    addSectionBtn.type = 'button';
+    addSectionBtn.className = 'ghost action-add';
+    addSectionBtn.textContent = '+ Add';
+    addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
+    actionRow.appendChild(addSectionBtn);
+
+    const deleteSectionBtn = document.createElement('button');
+    deleteSectionBtn.type = 'button';
+    deleteSectionBtn.className = 'ghost action-delete';
+    deleteSectionBtn.innerHTML = '<span class="btn-icon">🗑</span>Delete';
+    deleteSectionBtn.disabled = !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0;
+    deleteSectionBtn.addEventListener('click', () => deleteSelectedSection(tab, tabKey));
+    actionRow.appendChild(deleteSectionBtn);
+
+    listFilterRight.appendChild(actionRow);
+  }
   wrap.appendChild(listFilterRow);
 
   const bodyHost = document.createElement('div');
@@ -30204,7 +30110,6 @@ function renderSectionTab(tab, tabKey) {
   });
 
   renderSectionBody();
-  syncSectionStickyOffsets(wrap, header);
   return wrap;
 }
 

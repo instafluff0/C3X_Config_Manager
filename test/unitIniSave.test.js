@@ -173,6 +173,138 @@ test('scenario save writes full unit INI sections when section model is provided
   assert.match(scenarioText, /RUN=TemplateRun\.amb/);
 });
 
+test('scenario save rewrites action-row unit INI animation paths to Windows relative paths', () => {
+  const civ3Root = mkTmpDir();
+  const c3xRoot = mkTmpDir();
+  const scenarioDir = path.join(mkTmpDir(), 'MyScenario');
+  fs.writeFileSync(path.join(c3xRoot, 'default.c3x_config.ini'), 'flag = true\n', 'utf8');
+
+  const baseUnitDir = path.join(civ3Root, 'Conquests', 'Art', 'Units', 'TestUnit');
+  fs.mkdirSync(baseUnitDir, { recursive: true });
+  const baseIniPath = path.join(baseUnitDir, 'TestUnit.ini');
+  fs.writeFileSync(baseIniPath, [
+    '[Animations]',
+    'DEFAULT=TestDefault.flc',
+    'RUN=TestRun.flc',
+    '[Timing]',
+    'DEFAULT=0.500000',
+    'RUN=0.500000'
+  ].join('\n'), 'latin1');
+
+  const tabs = {
+    units: {
+      entries: [
+        {
+          civilopediaKey: 'PRTO_TEST',
+          animationName: 'TestUnit',
+          _importScenarioPath: path.join(civ3Root, 'Eldorado5.biq'),
+          unitIniEditor: {
+            iniPath: baseIniPath,
+            actions: [
+              { key: 'DEFAULT', relativePath: 'MyScenario/Art/Units/TestUnit/TestDefault.flc', timingSeconds: 0.5 },
+              { key: 'RUN', relativePath: 'Eldorado5/Art/Units/TestUnit/TestRunFast.flc', timingSeconds: 0.25 },
+              { key: 'FIDGET', relativePath: 'Art/Units/SharedUnit/SharedFidget.flc', timingSeconds: 0.75 }
+            ],
+            originalActions: [
+              { key: 'DEFAULT', relativePath: 'TestDefault.flc', timingSeconds: 0.5 },
+              { key: 'RUN', relativePath: 'TestRun.flc', timingSeconds: 0.5 }
+            ]
+          }
+        }
+      ]
+    }
+  };
+
+  const res = saveBundle({
+    mode: 'scenario',
+    c3xPath: c3xRoot,
+    civ3Path: civ3Root,
+    scenarioPath: scenarioDir,
+    tabs
+  });
+
+  assert.equal(res.ok, true);
+  const scenarioIni = path.join(scenarioDir, 'Art', 'Units', 'TestUnit', 'TestUnit.ini');
+  const scenarioText = fs.readFileSync(scenarioIni, 'latin1');
+  assert.match(scenarioText, /DEFAULT=TestDefault\.flc/);
+  assert.match(scenarioText, /RUN=TestRunFast\.flc/);
+  assert.match(scenarioText, /FIDGET=\.\.\\SharedUnit\\SharedFidget\.flc/);
+  assert.doesNotMatch(scenarioText, /MyScenario[\\/]/);
+  assert.doesNotMatch(scenarioText, /Eldorado5[\\/]/);
+});
+
+test('scenario save rewrites section-model unit INI animation paths to Windows relative paths', () => {
+  const civ3Root = mkTmpDir();
+  const c3xRoot = mkTmpDir();
+  const scenarioDir = path.join(mkTmpDir(), 'MyScenario');
+  fs.writeFileSync(path.join(c3xRoot, 'default.c3x_config.ini'), 'flag = true\n', 'utf8');
+
+  const baseUnitDir = path.join(civ3Root, 'Conquests', 'Art', 'Units', 'TemplateUnit');
+  fs.mkdirSync(baseUnitDir, { recursive: true });
+  const baseIniPath = path.join(baseUnitDir, 'TemplateUnit.ini');
+  fs.writeFileSync(baseIniPath, [
+    '[Animations]',
+    'DEFAULT=TemplateDefault.flc'
+  ].join('\n'), 'latin1');
+
+  const tabs = {
+    units: {
+      entries: [
+        {
+          civilopediaKey: 'PRTO_TEMPLATE',
+          animationName: 'TemplateUnit',
+          _importScenarioPath: path.join(civ3Root, 'Eldorado5.biq'),
+          unitIniEditor: {
+            iniPath: baseIniPath,
+            sections: [
+              {
+                name: 'Animations',
+                fields: [
+                  { key: 'DEFAULT', value: 'MyScenario/Art/Units/TemplateUnit/TemplateDefault.flc' },
+                  { key: 'RUN', value: 'Eldorado5/Art/Units/TemplateUnit/TemplateRun.flc' },
+                  { key: 'ATTACK1', value: 'Art/Units/SharedUnit/SharedAttack.flc' }
+                ]
+              },
+              {
+                name: 'Timing',
+                fields: [
+                  { key: 'DEFAULT', value: '0.42' },
+                  { key: 'RUN', value: '0.30' }
+                ]
+              }
+            ],
+            originalSections: [
+              {
+                name: 'Animations',
+                fields: [
+                  { key: 'DEFAULT', value: 'TemplateDefault.flc' }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  };
+
+  const res = saveBundle({
+    mode: 'scenario',
+    c3xPath: c3xRoot,
+    civ3Path: civ3Root,
+    scenarioPath: scenarioDir,
+    tabs
+  });
+  assert.equal(res.ok, true);
+
+  const scenarioIni = path.join(scenarioDir, 'Art', 'Units', 'TemplateUnit', 'TemplateUnit.ini');
+  const scenarioText = fs.readFileSync(scenarioIni, 'latin1');
+  assert.match(scenarioText, /DEFAULT=TemplateDefault\.flc/);
+  assert.match(scenarioText, /RUN=TemplateRun\.flc/);
+  assert.match(scenarioText, /ATTACK1=\.\.\\SharedUnit\\SharedAttack\.flc/);
+  assert.doesNotMatch(scenarioText, /MyScenario[\\/]/);
+  assert.doesNotMatch(scenarioText, /Eldorado5[\\/]/);
+});
+
 test('scenario save blocks unresolved new animation folder names without INI edits', () => {
   const civ3Root = mkTmpDir();
   const c3xRoot = mkTmpDir();
