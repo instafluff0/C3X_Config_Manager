@@ -1,4 +1,6 @@
 * RELEASE 27.2
+- Reworked the Techs tab into a denser dashboard layout with a compact top board for era/cost/prerequisites/tree controls, matrix-style capability groups, the same optional right-hand sidebar toggle used by Units and Improvements, and a collapsible Civilopedia section while keeping the sidebar visible by default.
+- Reworked the Improvements tab into a first-pass dense dashboard layout with grouped columns, more compact top metadata, and the same optional right-hand sidebar toggle used by the Units tab; the sidebar still defaults to visible for Improvements.
 - Refined the native search-bar clear `X` hover treatment to use a rounded background highlight instead of filter-only feedback, making the affordance feel more button-like.
 - Styled the native search-bar clear `X` affordance with a pointer cursor and hover/press feedback so clearing search feels more obviously clickable.
 - Matched shared search-bar typography to the main tab labels so search inputs now use the same family, size, and weight style as tabs like `C3X`, `Techs`, and `Civs`.
