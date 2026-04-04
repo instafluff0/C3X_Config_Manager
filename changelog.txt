@@ -1,3 +1,8 @@
+* RELEASE 27.4
+- Refactored compact boolean styling to use shared CSS tokens across Units, Improvements, Techs, and Civs while preserving the existing per-screen selectors and layout hooks.
+- Matched the compact Improvements and Units boolean toggles so inline checkbox rows now use the same smaller font and checkbox sizing as the denser rules layout.
+- Added shipped C3X base key `exclude_passengers_from_stealth_attack` to the manifest-backed C3X editor, quality audit coverage, and audited default-config fixture so stock newer defaults no longer warn as unknown.
+
 * RELEASE 27.3
 - Added the missing shipped R27 C3X base keys `reformat_turns_remaining_on_domestic_advisor_screen`, `patch_passengers_out_of_order_on_menu`, `can_bombard_only_sea_tiles`, `allow_corruption_in_capital`, `special_capital_decorruption_effect`, `override_no_ai_patrol`, and `override_barbarian_activity_level_for_scenario_maps` to the manifest-backed base editor, quality checks, and audited default fixture.
 - Fixed the district/wonder audit validator so `buildable_without_removal = marsh` is recognized as valid instead of incorrectly warning about an unknown list value.

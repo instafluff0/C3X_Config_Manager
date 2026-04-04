@@ -19,6 +19,19 @@
   --search-focus-glow: rgba(111, 146, 233, 0.24);
   --search-focus-warm: rgba(228, 127, 47, 0.18);
   --search-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 245, 255, 0.94));
+  --compact-boolean-font-size: 0.76rem;
+  --compact-boolean-line-height: 1.15;
+  --compact-boolean-gap: 6px;
+  --compact-boolean-checkbox-size: 14px;
+  --compact-boolean-matrix-checkbox-column: 18px;
+  --compact-boolean-padding-y: 3px;
+  --compact-boolean-padding-x: 2px;
+  --compact-boolean-radius: 6px;
+  --compact-boolean-color: #33405f;
+  --compact-boolean-active-color: #183f4c;
+  --compact-boolean-disabled-color: #7f8aa3;
+  --compact-boolean-hover-bg: rgba(239, 245, 255, 0.75);
+  --compact-boolean-hover-border: rgba(88, 122, 196, 0.14);
 }
 
 * {
@@ -3641,6 +3654,20 @@ details > summary:focus-visible {
   min-width: 0;
 }
 
+.unit-main-board .bool-toggle {
+  gap: var(--compact-boolean-gap);
+  font-size: var(--compact-boolean-font-size);
+}
+
+.unit-main-board .bool-toggle input[type="checkbox"] {
+  width: var(--compact-boolean-checkbox-size);
+  height: var(--compact-boolean-checkbox-size);
+}
+
+.unit-main-board .bool-toggle input[type="checkbox"] + span {
+  padding: 1px 7px;
+}
+
 .unit-main-board .rule-row {
   grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
   padding: 3px 4px;
@@ -3802,6 +3829,36 @@ details > summary:focus-visible {
   justify-content: flex-start;
 }
 
+.unit-stats-card .bool-toggle {
+  gap: var(--compact-boolean-gap);
+  font-size: var(--compact-boolean-font-size);
+  font-weight: 600;
+  line-height: var(--compact-boolean-line-height);
+  color: var(--compact-boolean-color);
+}
+
+.unit-stats-card .bool-toggle input[type="checkbox"] {
+  width: var(--compact-boolean-checkbox-size);
+  height: var(--compact-boolean-checkbox-size);
+}
+
+.unit-stats-card .bool-toggle input[type="checkbox"] + span {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.unit-stats-card .bool-toggle input[type="checkbox"]:checked + span {
+  color: var(--compact-boolean-active-color);
+  background: transparent;
+}
+
+.unit-stats-card .bool-toggle input[type="checkbox"]:not(:checked) + span {
+  color: var(--compact-boolean-disabled-color);
+  background: transparent;
+  opacity: 1;
+}
+
 .unit-stats-card .rule-control input[type="number"] {
   width: 108px;
   min-width: 108px;
@@ -3828,40 +3885,43 @@ details > summary:focus-visible {
   gap: 6px 18px;
 }
 
-.unit-boolean-item {
+.unit-boolean-item,
+.technology-boolean-item,
+.civilization-boolean-item,
+.improvement-boolean-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: var(--compact-boolean-matrix-checkbox-column) minmax(0, 1fr);
   align-items: start;
-  gap: 6px;
+  gap: var(--compact-boolean-gap);
   min-height: 0;
-  padding: 3px 2px;
-  border-radius: 6px;
-  border: 1px solid transparent;
+  padding: var(--compact-boolean-padding-y) var(--compact-boolean-padding-x);
+  border-radius: var(--compact-boolean-radius);
+  border: 0px solid transparent;
   background: transparent;
-  color: #33405f;
-  font-size: 0.76rem;
-  line-height: 1.15;
+  color: var(--compact-boolean-color);
+  font-size: var(--compact-boolean-font-size);
+  line-height: var(--compact-boolean-line-height);
   cursor: pointer !important;
 }
 
-.unit-boolean-item input[type="checkbox"] {
+.unit-boolean-item input[type="checkbox"],
+.technology-boolean-item input[type="checkbox"],
+.civilization-boolean-item input[type="checkbox"],
+.improvement-boolean-item input[type="checkbox"] {
   margin: 1px 0 0;
   accent-color: #1aa79c;
   cursor: pointer !important;
 }
 
 .unit-boolean-item span,
-.unit-boolean-item * {
+.unit-boolean-item *,
+.technology-boolean-item span,
+.technology-boolean-item *,
+.civilization-boolean-item span,
+.civilization-boolean-item *,
+.improvement-boolean-item span,
+.improvement-boolean-item * {
   cursor: pointer !important;
-}
-
-.unit-boolean-item.active {
-  color: #183f4c;
-}
-
-.unit-boolean-item:hover {
-  background: rgba(239, 245, 255, 0.75);
-  border-color: rgba(88, 122, 196, 0.14);
 }
 
 .unit-bottom-stack {
@@ -3977,42 +4037,6 @@ details > summary:focus-visible {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 18px;
-}
-
-.technology-boolean-item {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
-  gap: 6px;
-  min-height: 0;
-  padding: 3px 2px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #33405f;
-  font-size: 0.76rem;
-  line-height: 1.15;
-  cursor: pointer !important;
-}
-
-.technology-boolean-item input[type="checkbox"] {
-  margin: 1px 0 0;
-  accent-color: #1aa79c;
-  cursor: pointer !important;
-}
-
-.technology-boolean-item span,
-.technology-boolean-item * {
-  cursor: pointer !important;
-}
-
-.technology-boolean-item.active {
-  color: #183f4c;
-}
-
-.technology-boolean-item:hover {
-  background: rgba(239, 245, 255, 0.75);
-  border-color: rgba(88, 122, 196, 0.14);
 }
 
 .technology-bottom-stack {
@@ -4197,42 +4221,6 @@ details > summary:focus-visible {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 18px;
-}
-
-.civilization-boolean-item {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
-  gap: 6px;
-  min-height: 0;
-  padding: 3px 2px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #33405f;
-  font-size: 0.76rem;
-  line-height: 1.15;
-  cursor: pointer !important;
-}
-
-.civilization-boolean-item input[type="checkbox"] {
-  margin: 1px 0 0;
-  accent-color: #1aa79c;
-  cursor: pointer !important;
-}
-
-.civilization-boolean-item span,
-.civilization-boolean-item * {
-  cursor: pointer !important;
-}
-
-.civilization-boolean-item.active {
-  color: #183f4c;
-}
-
-.civilization-boolean-item:hover {
-  background: rgba(239, 245, 255, 0.75);
-  border-color: rgba(88, 122, 196, 0.14);
 }
 
 .civilization-build-priority-toggle {
@@ -4443,15 +4431,27 @@ details > summary:focus-visible {
 }
 
 .improvement-dense-card .bool-toggle,
-.improvement-numeric-card .bool-toggle {
+.improvement-numeric-card .bool-toggle,
+.improvement-compact-control .bool-toggle {
   max-width: 100%;
   min-width: 0;
   flex-wrap: nowrap;
+  gap: var(--compact-boolean-gap);
+  font-size: var(--compact-boolean-font-size);
+}
+
+.improvement-dense-card .bool-toggle input[type="checkbox"],
+.improvement-numeric-card .bool-toggle input[type="checkbox"],
+.improvement-compact-control .bool-toggle input[type="checkbox"] {
+  width: var(--compact-boolean-checkbox-size);
+  height: var(--compact-boolean-checkbox-size);
 }
 
 .improvement-dense-card .bool-toggle input[type="checkbox"] + span,
-.improvement-numeric-card .bool-toggle input[type="checkbox"] + span {
+.improvement-numeric-card .bool-toggle input[type="checkbox"] + span,
+.improvement-compact-control .bool-toggle input[type="checkbox"] + span {
   min-width: 0;
+  padding: 1px 7px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4498,40 +4498,19 @@ details > summary:focus-visible {
   gap: 6px 18px;
 }
 
-.improvement-boolean-item {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
-  gap: 6px;
-  min-height: 0;
-  padding: 3px 2px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #33405f;
-  font-size: 0.76rem;
-  line-height: 1.15;
-  cursor: pointer !important;
-}
-
-.improvement-boolean-item input[type="checkbox"] {
-  margin: 1px 0 0;
-  accent-color: #1aa79c;
-  cursor: pointer !important;
-}
-
-.improvement-boolean-item span,
-.improvement-boolean-item * {
-  cursor: pointer !important;
-}
-
+.unit-boolean-item.active,
+.technology-boolean-item.active,
+.civilization-boolean-item.active,
 .improvement-boolean-item.active {
-  color: #183f4c;
+  color: var(--compact-boolean-active-color);
 }
 
+.unit-boolean-item:hover,
+.technology-boolean-item:hover,
+.civilization-boolean-item:hover,
 .improvement-boolean-item:hover {
-  background: rgba(239, 245, 255, 0.75);
-  border-color: rgba(88, 122, 196, 0.14);
+  background: var(--compact-boolean-hover-bg);
+  border-color: var(--compact-boolean-hover-border);
 }
 
 .unit-lists-grid {

@@ -386,6 +386,32 @@ test('auditLoadedBundle reports base unknown keys and invalid base values', () =
   assert.ok(result.tabs.base.general.some((entry) => /Unknown C3X key "mystery_setting"/.test(entry.message)));
 });
 
+test('auditLoadedBundle recognizes shipped exclude_passengers_from_stealth_attack key', () => {
+  const c3xRoot = mkTmpDir();
+  const bundle = makeBundle(c3xRoot, {
+    tabs: {
+      base: {
+        rows: [
+          { key: 'exclude_passengers_from_stealth_attack', value: 'false' }
+        ]
+      },
+      civilizations: { entries: [] },
+      technologies: { entries: [] },
+      resources: { entries: [] },
+      governments: { entries: [] },
+      improvements: { entries: [] },
+      units: { entries: [] },
+      districts: { model: { sections: [] } },
+      wonders: { model: { sections: [] } },
+      naturalWonders: { model: { sections: [] } }
+    }
+  });
+
+  const result = auditLoadedBundle(bundle);
+  const general = (((result || {}).tabs || {}).base || {}).general || [];
+  assert.ok(general.every((entry) => !/Unknown C3X key "exclude_passengers_from_stealth_attack"/.test(entry.message)));
+});
+
 test('auditLoadedBundle reports unknown section keys and invalid section values', () => {
   const c3xRoot = mkTmpDir();
   const bundle = makeBundle(c3xRoot, {
