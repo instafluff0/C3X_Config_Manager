@@ -99,6 +99,7 @@ test('C3X base manifest string families stay explicit and audited', () => {
     aircraft_victory_animation: 'segmented_enum',
     building_prereqs_for_units: 'building_prereq_list',
     buildings_generating_resources: 'building_resource_list',
+    can_bombard_only_sea_tiles: 'quoted_reference_list',
     civ_aliases_by_era: 'civ_aliases_by_era',
     day_night_cycle_mode: 'segmented_enum',
     distribution_hub_yield_division_mode: 'segmented_enum',
@@ -113,6 +114,8 @@ test('C3X base manifest string families stay explicit and audited', () => {
     leader_aliases_by_era: 'leader_aliases_by_era',
     limit_units_per_tile: 'stack_limit',
     limit_defensive_retreat_on_water_to_types: 'quoted_reference_list',
+    override_barbarian_activity_level_for_scenario_maps: 'segmented_enum',
+    override_no_ai_patrol: 'segmented_enum',
     pinned_season_for_seasonal_cycle: 'plain_string',
     production_perfume: 'name_amount_list',
     ptw_like_artillery_targeting: 'quoted_reference_list',
@@ -148,7 +151,10 @@ test('C3X base manifest enum, bitfield, and reference metadata stays source-back
   assert.deepEqual(C3X_BASE_MANIFEST.land_transport_rules.options, ['load-onto-boat', 'join-army', 'no-defense-from-inside', 'no-escape']);
   assert.deepEqual(C3X_BASE_MANIFEST.special_helicopter_rules.options, ['allow-on-carriers', 'passenger-airdrop', 'no-defense-from-inside', 'no-escape']);
   assert.deepEqual(C3X_BASE_MANIFEST.enabled_seasons.options, ['summer', 'fall', 'winter', 'spring']);
+  assert.deepEqual(C3X_BASE_MANIFEST.override_no_ai_patrol.options, ['none', 'one', 'zero']);
+  assert.deepEqual(C3X_BASE_MANIFEST.override_barbarian_activity_level_for_scenario_maps.options, ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random']);
 
+  assert.equal(C3X_BASE_MANIFEST.can_bombard_only_sea_tiles.referenceTab, 'units');
   assert.equal(C3X_BASE_MANIFEST.exclude_types_from_units_per_tile_limit.referenceTab, 'units');
   assert.equal(C3X_BASE_MANIFEST.limit_defensive_retreat_on_water_to_types.referenceTab, 'units');
   assert.equal(C3X_BASE_MANIFEST.ptw_like_artillery_targeting.referenceTab, 'units');

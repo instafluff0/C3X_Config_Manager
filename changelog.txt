@@ -1,4 +1,6 @@
 * RELEASE 27.2
+- Added the missing shipped R27 C3X base keys `reformat_turns_remaining_on_domestic_advisor_screen`, `patch_passengers_out_of_order_on_menu`, `can_bombard_only_sea_tiles`, `allow_corruption_in_capital`, `special_capital_decorruption_effect`, `override_no_ai_patrol`, and `override_barbarian_activity_level_for_scenario_maps` to the manifest-backed base editor, quality checks, and audited default fixture.
+- Fixed the district/wonder audit validator so `buildable_without_removal = marsh` is recognized as valid instead of incorrectly warning about an unknown list value.
 - Restyled shared search-field active borders to use the app theme accents with a brighter focus ring and subtle glow instead of the old flat gray focus treatment.
 - Tuned the shared search-field rest state back toward the previous low-border look and moved the focus emphasis inward so the active edge no longer gets clipped at container boundaries.
 - Balanced the spacing around shared compact collapsible stacks so the gap below sections like `Other Art` matches the gap above `Civilopedia`.

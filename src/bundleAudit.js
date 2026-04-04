@@ -200,7 +200,7 @@ const SECTION_LINT_SPECS = {
       ['auto_add_road', { type: 'bool' }],
       ['auto_add_railroad', { type: 'bool' }],
       ['buildable_on_overlays', { type: 'list', acceptedOptions: DISTRICT_OVERLAY_TOKENS }],
-      ['buildable_without_removal', { type: 'list', acceptedOptions: ['jungle', 'jungles', 'forest', 'forests', 'swamp', 'swamps'] }],
+      ['buildable_without_removal', { type: 'list', acceptedOptions: ['jungle', 'jungles', 'forest', 'forests', 'marsh', 'marshes', 'swamp', 'swamps'] }],
       ['buildable_adjacent_to_overlays', { type: 'list', acceptedOptions: DISTRICT_ADJACENT_OVERLAY_TOKENS }],
       ['buildable_on_districts', { type: 'list' }],
       ['buildable_adjacent_to_districts', { type: 'list' }],

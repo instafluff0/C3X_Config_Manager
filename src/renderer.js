@@ -631,7 +631,9 @@ const BASE_ENUM_OPTIONS = {
   double_minimap_size: ['never', 'high-def', 'always'],
   unit_cycle_search_criteria: ['standard', 'similar-near-start', 'similar-near-destination'],
   day_night_cycle_mode: ['off', 'timer', 'user-time', 'every-turn', 'specified'],
-  seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified']
+  seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified'],
+  override_no_ai_patrol: ['none', 'one', 'zero'],
+  override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random']
 };
 const BASE_SEGMENTED_OPTIONS = {
   draw_lines_using_gdi_plus: ['never', 'wine', 'always'],
@@ -639,6 +641,8 @@ const BASE_SEGMENTED_OPTIONS = {
   unit_cycle_search_criteria: ['standard', 'similar-near-start', 'similar-near-destination'],
   day_night_cycle_mode: ['off', 'timer', 'user-time', 'every-turn', 'specified'],
   seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified'],
+  override_no_ai_patrol: ['none', 'one', 'zero'],
+  override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random'],
   distribution_hub_yield_division_mode: ['flat', 'scale-by-city-count'],
   ai_distribution_hub_build_strategy: ['auto', 'by-city-count'],
   ai_auto_build_great_wall_strategy: ['all-borders', 'other-civ-bordered-only'],
@@ -648,6 +652,7 @@ const BASE_SEGMENTED_OPTIONS = {
   aircraft_victory_animation: ['none', 'blank', 'default', 'run', 'attack1', 'attack2', 'attack3', 'death', 'fortify', 'fidget', 'victory', 'capture', 'fortress', 'build', 'road', 'mine', 'irrigate', 'jungle', 'forest', 'plant']
 };
 const BASE_REFERENCE_LIST_TAB_BY_KEY = {
+  can_bombard_only_sea_tiles: 'units',
   exclude_types_from_units_per_tile_limit: 'units',
   limit_defensive_retreat_on_water_to_types: 'units',
   ptw_like_artillery_targeting: 'units',

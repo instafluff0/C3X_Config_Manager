@@ -193,6 +193,8 @@ test('C3X source-backed enum readers match renderer and manifest options', () =>
     unit_cycle_search_criteria: ['standard', 'similar-near-start', 'similar-near-destination'],
     work_area_limit: ['none', 'cultural', 'cultural-min-2', 'cultural-or-adjacent'],
     day_night_cycle_mode: ['off', 'timer', 'user-time', 'every-turn', 'specified'],
+    override_no_ai_patrol: ['none', 'one', 'zero'],
+    override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random'],
     distribution_hub_yield_division_mode: ['flat', 'scale-by-city-count'],
     ai_distribution_hub_build_strategy: ['auto', 'by-city-count'],
     ai_auto_build_great_wall_strategy: ['all-borders', 'other-civ-bordered-only'],
@@ -213,6 +215,29 @@ test('C3X source-backed enum readers match renderer and manifest options', () =>
       `Manifest options for ${key} should match injected_code.c`
     );
   });
+});
+
+test('C3X can_bombard_only_sea_tiles uses the shared quoted unit-list wiring', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const manifestPath = path.join(__dirname, '..', 'src', 'c3xBaseManifest.js');
+  const rendererText = fs.readFileSync(rendererPath, 'utf8');
+  const manifestText = fs.readFileSync(manifestPath, 'utf8');
+
+  assert.match(
+    rendererText,
+    /can_bombard_only_sea_tiles:\s*'units'/,
+    'Renderer should map can_bombard_only_sea_tiles to the units reference-list picker'
+  );
+  assert.match(
+    manifestText,
+    /can_bombard_only_sea_tiles:\s*'quoted_reference_list'/,
+    'Manifest should classify can_bombard_only_sea_tiles as a quoted reference list'
+  );
+  assert.match(
+    manifestText,
+    /can_bombard_only_sea_tiles:\s*Object\.freeze\(\{ tab: 'units' \}\)/,
+    'Manifest should bind can_bombard_only_sea_tiles to unit references'
+  );
 });
 
 test('C3X base typing uses grouped undo sessions instead of per-keystroke snapshots', () => {

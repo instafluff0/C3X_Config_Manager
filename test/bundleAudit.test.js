@@ -577,6 +577,42 @@ test('auditLoadedBundle allows district and natural-wonder parser aliases used b
   assert.equal(naturalMessages.some((entry) => /unknown list value|unknown value/i.test(String(entry.message || ''))), false);
 });
 
+test('auditLoadedBundle accepts marsh for buildable_without_removal', () => {
+  const c3xRoot = mkTmpDir();
+  const bundle = makeBundle(c3xRoot, {
+    tabs: {
+      base: {
+        rows: [
+          { key: 'day_night_cycle_mode', value: 'off' },
+          { key: 'enable_districts', value: 'false' }
+        ]
+      },
+      civilizations: { entries: [] },
+      technologies: { entries: [] },
+      resources: { entries: [] },
+      governments: { entries: [] },
+      improvements: { entries: [] },
+      units: { entries: [] },
+      districts: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Great Wall',
+              buildable_without_removal: 'marsh'
+            })
+          ]
+        }
+      },
+      wonders: { model: { sections: [] } },
+      naturalWonders: { model: { sections: [] } }
+    }
+  });
+
+  const result = auditLoadedBundle(bundle);
+  const districtMessages = ((result.tabs.districts || {}).sections || {})['0'] || [];
+  assert.equal(districtMessages.some((entry) => /unknown list value|unknown value/i.test(String(entry.message || ''))), false);
+});
+
 test('auditLoadedBundle recognizes wonder buildable_on_rivers as a valid field', () => {
   const c3xRoot = mkTmpDir();
   const bundle = makeBundle(c3xRoot, {
