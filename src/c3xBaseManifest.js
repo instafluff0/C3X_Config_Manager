@@ -164,6 +164,8 @@
     ai_auto_build_great_wall_strategy: 'R27',
     enable_city_work_radii_highlights: 'R26',
     enable_named_tiles: 'R27',
+    allow_extraterritorial_colonies: 'R27',
+    per_extraterritorial_colony_relation_penalty: 'R27',
     enable_custom_animations: 'R28'
   });
 
