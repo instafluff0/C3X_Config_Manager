@@ -8,7 +8,7 @@
 - Simplified R28 counter-rule experience conditions to no-art dropdowns and defaulted enemy matches to Any.
 - Refined the R28 counter rules editor with a clearer vs. layout, bottom Remove action, structured terrain and district pickers, and English experience alias pickers.
 - Reworked the R28 counter rules editor into clearer Match, modifier, and optional-condition groups.
-- Changed the R28 pinned seasonal-cycle season field to an enum control and removed the duplicate wildcard row from counter-rule attacker pickers.
+- Changed the R28 pinned seasonal-cycle season field to a segmented season control and removed the duplicate wildcard row from counter-rule attacker pickers.
 - Added terrain thumbnails to the R28 terrain visibility array editors so terrain-specific values are easier to scan.
 - Expanded Base-tab help text for new R28 unit counter and alternate visibility settings so the UI carries the important guidance from the C3X default config.
 - Added R28 C3X base config support for pollution from free improvements, unit counters, alternate visibility logic, terrain visibility arrays, and unit visibility rules, including structured editors and QA checks.

@@ -761,6 +761,23 @@ test('C3X source-backed enum readers match renderer and manifest options', () =>
   });
 });
 
+test('pinned seasonal cycle season uses the segmented Base control', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const rendererText = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    rendererText,
+    /const BASE_SEGMENTED_OPTIONS = \{[\s\S]*?pinned_season_for_seasonal_cycle:\s*\['summer', 'fall', 'winter', 'spring'\]/,
+    'Pinned season should render like seasonal_cycle_mode instead of using the dropdown-only path'
+  );
+
+  assert.match(
+    rendererText,
+    /if \(BASE_SEGMENTED_OPTIONS\[row\.key\]\) \{[\s\S]*?makeSegmentedChoiceControl\(BASE_SEGMENTED_OPTIONS\[row\.key\][\s\S]*?const enumOptions = BASE_ENUM_OPTIONS\[row\.key\];/,
+    'Base segmented options should be handled before the enum dropdown fallback'
+  );
+});
+
 test('C3X can_bombard_only_sea_tiles uses the shared quoted unit-list wiring', () => {
   const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
   const manifestPath = path.join(__dirname, '..', 'src', 'c3xBaseManifest.js');

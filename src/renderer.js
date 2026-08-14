@@ -1042,6 +1042,7 @@ const BASE_SEGMENTED_OPTIONS = {
   unit_cycle_search_criteria: ['standard', 'similar-near-start', 'similar-near-destination'],
   day_night_cycle_mode: ['off', 'timer', 'user-time', 'every-turn', 'specified'],
   seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified'],
+  pinned_season_for_seasonal_cycle: ['summer', 'fall', 'winter', 'spring'],
   override_no_ai_patrol: ['none', 'one', 'zero'],
   override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random'],
   pollution_spawn_effect: ['standard', 'reduce-population', 'reduce-population-and-pollute-tile'],
