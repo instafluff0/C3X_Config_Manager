@@ -2010,6 +2010,10 @@ test('auditLoadedBundle reports base unknown keys and invalid base values', () =
         rows: [
           { key: 'day_night_cycle_mode', value: 'every_turn' },
           { key: 'enable_districts', value: 'maybe' },
+          { key: 'terrain_visibility_bonus', value: '[1, 2]' },
+          { key: 'terrain_visibility_flat_bonus', value: '[false, false, false, false, false, false, false, false, false, false, false, true, true, maybe]' },
+          { key: 'counter_rules', value: '[Warrior against Spearman]' },
+          { key: 'unit_visibility_rules', value: '[Sea: when-fortified]' },
           { key: 'mystery_setting', value: '123' }
         ]
       },
@@ -2028,6 +2032,10 @@ test('auditLoadedBundle reports base unknown keys and invalid base values', () =
   const result = auditLoadedBundle(bundle);
   assert.ok(result.tabs.base.general.some((entry) => /day_night_cycle_mode.+unknown value "every_turn"/i.test(entry.message)));
   assert.ok(result.tabs.base.general.some((entry) => /enable_districts.+invalid boolean value "maybe"/i.test(entry.message)));
+  assert.ok(result.tabs.base.general.some((entry) => /terrain_visibility_bonus.+invalid fixed integer array/i.test(entry.message)));
+  assert.ok(result.tabs.base.general.some((entry) => /terrain_visibility_flat_bonus.+invalid fixed boolean array/i.test(entry.message)));
+  assert.ok(result.tabs.base.general.some((entry) => /counter_rules.+malformed counter rule syntax/i.test(entry.message)));
+  assert.ok(result.tabs.base.general.some((entry) => /unit_visibility_rules.+malformed unit visibility rule syntax/i.test(entry.message)));
   assert.ok(result.tabs.base.general.some((entry) => /Unknown C3X key "mystery_setting"/.test(entry.message)));
 });
 
@@ -2042,14 +2050,17 @@ test('auditLoadedBundle reports C3X base references that do not match loaded rul
           { key: 'enable_great_wall_districts', value: 'true' },
           { key: 'auto_build_great_wall_around_territory', value: 'true' },
           { key: 'buildings_generating_resources', value: '["Hollywood": local yields "Films"]' },
-          { key: 'building_prereqs_for_units', value: '["Barracks": "Warrior" "Ghost Unit"]' },
-          { key: 'production_perfume', value: '["Temple": 20, "Archer": -50%, "Missing Producer": 10]' },
+          { key: 'building_prereqs_for_units', value: '["Barracks": "Warrior" "Fast Units" "Ghost Unit"]' },
+          { key: 'production_perfume', value: '["Temple": 20, "Archer": -50%, "Fast Units": 10, "Missing Producer": 10]' },
           { key: 'technology_perfume', value: '["Electricity": 12, "Missing Tech": 5]' },
           { key: 'resource_perfume', value: '["Films": 20, "Missing Resource": 1]' },
           { key: 'government_perfume', value: '["Democracy": 1, "Missing Government": 2]' },
           { key: 'work_area_improvements', value: '["Aqueduct": 3, "Missing Building": 2]' },
-          { key: 'unit_limits', value: '["Settler": 1 per-city, "Missing Unit": 1]' },
-          { key: 'can_bombard_only_sea_tiles', value: '["Battleship" "Missing Boat"]' },
+          { key: 'unit_type_tags', value: '["Fast Units": "Warrior" "Archer" "Ghost Counter Unit", "Mounted Units": "Fast Units" "Settler"]' },
+          { key: 'counter_rules', value: '["Fast Units" vs "Ghost Combatant" self-atk 125 terrain moon district "Ghost District"]' },
+          { key: 'unit_limits', value: '["Settler": 1 per-city, "Fast Units": 4, "Missing Unit": 1]' },
+          { key: 'unit_visibility_rules', value: '[Sea: 2 when-fortified-same-continent, "Fast Units": 1 + 2 times-bonus, "Ghost Spotter": 1 + 2 times-bonus]' },
+          { key: 'can_bombard_only_sea_tiles', value: '["Battleship" "Fast Units" "Missing Boat"]' },
           { key: 'great_wall_auto_build_wonder_name', value: '"Hollywood"' }
         ]
       },
@@ -2074,7 +2085,7 @@ test('auditLoadedBundle reports C3X base references that do not match loaded rul
           { name: 'Battleship' }
         ]
       },
-      districts: { model: { sections: [] } },
+      districts: { model: { sections: [makeSection({ name: 'Campus' })] } },
       wonders: { model: { sections: [] } },
       naturalWonders: { model: { sections: [] } }
     }
@@ -2084,13 +2095,25 @@ test('auditLoadedBundle reports C3X base references that do not match loaded rul
   const messages = ((result.tabs.base || {}).general || []).map((entry) => String(entry.message || ''));
   assert.ok(messages.some((msg) => /buildings_generating_resources.+Hollywood/.test(msg)));
   assert.ok(messages.some((msg) => /building_prereqs_for_units.+Ghost Unit/.test(msg)));
+  assert.equal(messages.some((msg) => /building_prereqs_for_units.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /production_perfume.+Missing Producer/.test(msg)));
+  assert.equal(messages.some((msg) => /production_perfume.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /technology_perfume.+Missing Tech/.test(msg)));
   assert.ok(messages.some((msg) => /resource_perfume.+Missing Resource/.test(msg)));
   assert.ok(messages.some((msg) => /government_perfume.+Missing Government/.test(msg)));
   assert.ok(messages.some((msg) => /work_area_improvements.+Missing Building/.test(msg)));
+  assert.ok(messages.some((msg) => /unit_type_tags.+Ghost Counter Unit/.test(msg)));
+  assert.ok(messages.some((msg) => /counter_rules.+Ghost Combatant/.test(msg)));
+  assert.ok(messages.some((msg) => /counter_rules.+moon/.test(msg)));
+  assert.ok(messages.some((msg) => /counter_rules.+Ghost District/.test(msg)));
+  assert.equal(messages.some((msg) => /counter_rules.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /unit_limits.+Missing Unit/.test(msg)));
+  assert.equal(messages.some((msg) => /unit_limits.+Fast Units/.test(msg)), false);
+  assert.ok(messages.some((msg) => /unit_visibility_rules.+Ghost Spotter/.test(msg)));
+  assert.equal(messages.some((msg) => /unit_visibility_rules.+Fast Units/.test(msg)), false);
+  assert.equal(messages.some((msg) => /unit_visibility_rules.+Sea/.test(msg)), false);
   assert.ok(messages.some((msg) => /can_bombard_only_sea_tiles.+Missing Boat/.test(msg)));
+  assert.equal(messages.some((msg) => /can_bombard_only_sea_tiles.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /great_wall_auto_build_wonder_name.+Hollywood/.test(msg)));
   assert.equal(messages.some((msg) => /buildings_generating_resources.+Films/.test(msg)), false);
 });
@@ -2189,6 +2212,7 @@ test('auditLoadedBundle reports unknown section keys and invalid section values'
             makeSection({
               name: 'Airport Hub',
               buildable_on_rivers: 'sometimes',
+              type: 'roads-only',
               ai_build_strategy: 'roads-only',
               buildable_on: 'grassland,moon',
               mystery_flag: '1'
@@ -2222,12 +2246,178 @@ test('auditLoadedBundle reports unknown section keys and invalid section values'
 
   const result = auditLoadedBundle(bundle);
   assert.ok(result.tabs.districts.sections['0'].some((entry) => /buildable_on_rivers.+invalid boolean value "sometimes"/i.test(entry.message)));
+  assert.ok(result.tabs.districts.sections['0'].some((entry) => /type.+unknown value "roads-only"/i.test(entry.message)));
   assert.ok(result.tabs.districts.sections['0'].some((entry) => /ai_build_strategy.+unknown value "roads-only"/i.test(entry.message)));
   assert.ok(result.tabs.districts.sections['0'].some((entry) => /buildable_on.+unknown list values?: moon/i.test(entry.message)));
   assert.ok(result.tabs.districts.sections['0'].some((entry) => /Unknown field "mystery_flag"/.test(entry.message)));
   assert.ok(result.tabs.wonders.sections['0'].some((entry) => /img_row.+invalid integer value "left"/i.test(entry.message)));
   assert.ok(result.tabs.naturalWonders.sections['0'].some((entry) => /terrain_type.+unknown value "moon"/i.test(entry.message)));
   assert.ok(result.tabs.naturalWonders.sections['0'].some((entry) => /adjacency_dir.+unknown value "upward"/i.test(entry.message)));
+});
+
+test('auditLoadedBundle reports invalid animation day/night hour syntax', () => {
+  const c3xRoot = mkTmpDir();
+  const bundle = makeBundle(c3xRoot, {
+    tabs: {
+      base: {
+        rows: [
+          { key: 'day_night_cycle_mode', value: 'off' },
+          { key: 'enable_districts', value: 'false' }
+        ]
+      },
+      naturalWonders: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Crystal Cave',
+              animation: 'ini=NaturalWonders\\Crystal\\Crystal.INI; show_in_day_night_hours=7-25, dusk'
+            })
+          ]
+        }
+      },
+      districts: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Smoke District',
+              animation: 'ini=Districts\\Smoke.INI; hours=18-5; seasons=spring,summer; cultures=AMER,EURO; eras=industrial,modern; frame_time_seconds=0.12; offsets=0,-10'
+            }),
+            makeSection({
+              name: 'Broken District',
+              animation: 'ini=Districts\\Broken.INI; hours=6-30; cultures=LUNAR; eras=future; frame_time_seconds=fast'
+            })
+          ]
+        }
+      },
+      animations: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Wave',
+              ini_path: 'Terrain\\Wave\\Wave.INI',
+              type: 'coastal-wave',
+              frame_time_seconds: '0.14',
+              show_in_day_night_hours: '7-17, 24'
+            })
+          ]
+        }
+      }
+    }
+  });
+
+  const result = auditLoadedBundle(bundle);
+  assert.ok(result.tabs.naturalWonders.sections['0'].some((entry) => /Animation 1.+day\/night hours must be between 0 and 23.+7-25, dusk/i.test(entry.message)));
+  assert.equal(((result.tabs.districts.sections || {})['0'] || []).some((entry) => /Animation 1/i.test(entry.message)), false);
+  assert.ok(result.tabs.districts.sections['1'].some((entry) => /Animation 1.+day\/night hours must be between 0 and 23.+6-30/i.test(entry.message)));
+  assert.ok(result.tabs.districts.sections['1'].some((entry) => /unknown culture value.+LUNAR/i.test(entry.message)));
+  assert.ok(result.tabs.districts.sections['1'].some((entry) => /unknown era value.+future/i.test(entry.message)));
+  assert.ok(result.tabs.districts.sections['1'].some((entry) => /invalid frame_time_seconds value "fast"/i.test(entry.message)));
+  assert.ok(result.tabs.animations.sections['0'].some((entry) => /show_in_day_night_hours.+day\/night hours must be between 0 and 23.+7-17, 24/i.test(entry.message)));
+  assert.equal(result.tabs.animations.sections['0'].some((entry) => /frame_time_seconds/i.test(entry.message)), false);
+});
+
+test('auditLoadedBundle reports invalid animation frame-time syntax without rejecting decimals', () => {
+  const c3xRoot = mkTmpDir();
+  const bundle = makeBundle(c3xRoot, {
+    tabs: {
+      animations: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Deer',
+              ini_path: 'Resources\\Deer\\Deer.INI',
+              type: 'resource',
+              frame_time_seconds: '0.14'
+            }),
+            makeSection({
+              name: 'Broken',
+              ini_path: 'Resources\\Broken\\Broken.INI',
+              type: 'resource',
+              frame_time_seconds: 'fast'
+            })
+          ]
+        }
+      }
+    }
+  });
+
+  const result = auditLoadedBundle(bundle);
+  const validSectionMessages = result.tabs.animations.sections['0'] || [];
+  const invalidSectionMessages = result.tabs.animations.sections['1'] || [];
+  assert.equal(validSectionMessages.some((entry) => /frame_time_seconds/i.test(entry.message)), false);
+  assert.ok(invalidSectionMessages.some((entry) => /frame_time_seconds.+invalid decimal value "fast"/i.test(entry.message)));
+});
+
+test('auditLoadedBundle stages repair action for malformed tile animation INI files', () => {
+  const c3xRoot = mkTmpDir();
+  const scenarioRoot = mkTmpDir();
+  const iniDir = path.join(c3xRoot, 'Art', 'Animations', 'Resources', 'Cow');
+  fs.mkdirSync(iniDir, { recursive: true });
+  fs.writeFileSync(path.join(iniDir, 'cow.flc'), Buffer.from('flc'));
+  fs.writeFileSync(path.join(iniDir, 'Cow.INI'), [
+    '[Animations]',
+    'DEFAULT=cow.flc',
+    'RUN=cow.flc',
+    '[Sound Effects]',
+    'DEFAULT=moo.wav',
+    ''
+  ].join('\r\n'), 'latin1');
+  const bundle = makeBundle(c3xRoot, {
+    mode: 'scenario',
+    scenarioPath: scenarioRoot,
+    tabs: {
+      animations: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Cow',
+              ini_path: 'Resources\\Cow\\Cow.INI',
+              type: 'resource'
+            })
+          ]
+        }
+      }
+    }
+  });
+
+  const result = auditLoadedBundle(bundle);
+  const messages = result.tabs.animations.sections['0'] || [];
+  const issue = messages.find((entry) => entry.code === 'tile-animation-ini-invalid');
+  assert.ok(issue);
+  assert.match(issue.message, /ATTACK1 is blank/i);
+  assert.match(issue.message, /extra animation slots/i);
+  assert.match(issue.message, /sound effects/i);
+  assert.equal(issue.action.type, 'repair-tile-animation-ini');
+  assert.equal(issue.action.flcFileName, 'cow.flc');
+});
+
+test('auditLoadedBundle does not offer Tile Animation INI repairs in Standard Game mode', () => {
+  const c3xRoot = mkTmpDir();
+  const iniDir = path.join(c3xRoot, 'Art', 'Animations', 'Resources', 'Cow');
+  fs.mkdirSync(iniDir, { recursive: true });
+  fs.writeFileSync(path.join(iniDir, 'cow.flc'), Buffer.from('flc'));
+  fs.writeFileSync(path.join(iniDir, 'Cow.INI'), '[Animations]\nDEFAULT=cow.flc\nRUN=cow.flc\n', 'latin1');
+  const bundle = makeBundle(c3xRoot, {
+    mode: 'global',
+    tabs: {
+      animations: {
+        model: {
+          sections: [
+            makeSection({
+              name: 'Cow',
+              ini_path: 'Resources\\Cow\\Cow.INI',
+              type: 'resource'
+            })
+          ]
+        }
+      }
+    }
+  });
+
+  const result = auditLoadedBundle(bundle);
+  const issue = (result.tabs.animations.sections['0'] || []).find((entry) => entry.code === 'tile-animation-ini-invalid');
+  assert.ok(issue);
+  assert.equal(issue.action, undefined);
 });
 
 test('auditLoadedBundle allows empty bitfield-list base values', () => {

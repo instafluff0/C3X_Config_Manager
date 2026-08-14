@@ -29,6 +29,11 @@ const UNIT_ATLAS_SPRITE_SIZE = 32;
 const UNIT_ATLAS_GUTTER = 1;
 const UNIT_ATLAS_MAGENTA = RESOURCE_ATLAS_MAGENTA;
 const UNIT_RUNTIME_IMPORT_EXTENSIONS = new Set(['.amb', '.flc', '.wav']);
+const TILE_ANIMATION_INI_ANIMATION_KEYS = [
+  'BLANK', 'DEFAULT', 'WALK', 'RUN', 'ATTACK1', 'ATTACK2', 'ATTACK3', 'DEFEND', 'DEATH', 'DEAD',
+  'FORTIFY', 'FORTIFYHOLD', 'FIDGET', 'VICTORY', 'TURNLEFT', 'TURNRIGHT', 'BUILD', 'ROAD', 'MINE',
+  'IRRIGATE', 'FORTRESS', 'CAPTURE', 'STOP_AT_LAST_FRAME', 'PauseROAD', 'PauseMINE', 'PauseIRRIGATE'
+];
 const BUILDING_CITY_ATLAS_RELATIVE_PATHS = {
   large: 'Art/city screen/buildings-large.pcx',
   small: 'Art/city screen/buildings-small.pcx'
@@ -48,6 +53,46 @@ const SCIENCE_ADVISOR_BACKGROUND_RELATIVE_PATHS = [
 ];
 const SCIENCE_ADVISOR_TECHBOX_RELATIVE_PATH = 'Art/Advisors/techboxes.pcx';
 const SCIENCE_ADVISOR_ARROW_METADATA_RELATIVE_PATH = 'c3x_editor_tech_tree_arrows.json';
+const C3X_BASE_UI_DEFAULTS = Object.freeze({
+  diplo_demand_rate_between_ai_players: '0',
+  limit_ai_to_one_demand_per_turn: 'false',
+  show_ai_demand_info_popup: 'false',
+  remove_human_player_bias_from_ai_war_planning: 'false',
+  unit_type_tags: '[]',
+  pollution_spawn_effect: 'standard',
+  radar_tower_detection_distance: '0',
+  outpost_detection_distance: '0',
+  steal_plans_duration: '1',
+  enable_pollution_from_free_improvements: 'false',
+  enable_unit_counters: 'false',
+  counter_rules: '[]',
+  prefer_less_expensive_defenders: 'false',
+  enable_alternate_view_distance_logic: 'false',
+  terrain_visibility_euclidean: 'false',
+  base_visibility_range: '1',
+  terrain_visibility_see_height: '[1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1]',
+  terrain_visibility_seen_height: '[0, 0, 0, 0, 0, 1, 2, 1, 1, 0, 2, 0, 0, 0]',
+  terrain_visibility_bonus: '[0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0]',
+  terrain_visibility_flat_bonus: '[false, false, false, false, false, false, false, false, false, false, false, true, true, true]',
+  terrain_visibility_bonus_can_stack: 'false',
+  terrain_visibility_flat_bonus_limit: '1',
+  terrain_visibility_flat_bonus_can_stack: 'false',
+  unit_visibility_rules: '[Sea: 2 when-fortified-same-continent]'
+});
+let bundledC3xBaseDefaultsTextCache = null;
+
+function getBundledC3xBaseDefaultsText() {
+  if (bundledC3xBaseDefaultsTextCache !== null) return bundledC3xBaseDefaultsTextCache;
+  const defaultsPath = path.join(__dirname, 'c3xBaseDefaults.ini');
+  try {
+    bundledC3xBaseDefaultsTextCache = fs.readFileSync(defaultsPath, 'utf8');
+  } catch (_err) {
+    bundledC3xBaseDefaultsTextCache = Object.entries(C3X_BASE_UI_DEFAULTS)
+      .map(([key, value]) => `${key} = ${value}`)
+      .join('\n');
+  }
+  return bundledC3xBaseDefaultsTextCache;
+}
 const SCIENCE_ADVISOR_ARROW_METADATA_FORMAT = 'c3x-editor-tech-tree-arrows';
 const CIV3_PEDIA_ART_PATH_MAX_CHARS = 65;
 const CIV_COLOR_PALETTE_RELATIVE_DIR = path.join('Art', 'Units', 'Palettes');
@@ -6498,12 +6543,20 @@ function inferBaseType(key, value) {
 }
 
 function buildBaseModel(defaultText, scenarioText, customText, mode, targetText) {
+  const bundledDefaultText = getBundledC3xBaseDefaultsText();
+  const bundledParsed = parseIniLines(bundledDefaultText);
   const defaultParsed = parseIniLines(defaultText);
   const scenarioParsed = parseIniLines(scenarioText);
   const customParsed = parseIniLines(customText);
   const targetParsed = parseIniLines(targetText);
 
-  const effective = { ...defaultParsed.map };
+  const manifestDefaults = Object.fromEntries(
+    Object.entries({ ...C3X_BASE_UI_DEFAULTS, ...bundledParsed.map })
+      .filter(([key]) => C3X_BASE_MANIFEST[key])
+  );
+  const defaultMap = { ...manifestDefaults, ...defaultParsed.map };
+
+  const effective = { ...defaultMap };
   if (mode === 'scenario') {
     Object.assign(effective, scenarioParsed.map);
     Object.assign(effective, customParsed.map);
@@ -6514,9 +6567,23 @@ function buildBaseModel(defaultText, scenarioText, customText, mode, targetText)
   const orderedKeys = [];
   const keySet = new Set();
 
-  for (const row of defaultParsed.rows) {
+  for (const row of bundledParsed.rows) {
+    if (keySet.has(row.key)) continue;
     orderedKeys.push(row.key);
     keySet.add(row.key);
+  }
+
+  for (const row of defaultParsed.rows) {
+    if (keySet.has(row.key)) continue;
+    orderedKeys.push(row.key);
+    keySet.add(row.key);
+  }
+
+  for (const key of Object.keys(manifestDefaults)) {
+    if (!keySet.has(key)) {
+      keySet.add(key);
+      orderedKeys.push(key);
+    }
   }
 
   for (const key of Object.keys(effective)) {
@@ -6529,7 +6596,7 @@ function buildBaseModel(defaultText, scenarioText, customText, mode, targetText)
   const editableMap = Object.keys(targetParsed.map).length > 0 ? targetParsed.map : effective;
 
   const rows = orderedKeys.map((key) => {
-    const defaultValue = defaultParsed.map[key] ?? '';
+    const defaultValue = defaultMap[key] ?? '';
     const hasScenarioValue = Object.prototype.hasOwnProperty.call(scenarioParsed.map, key);
     const hasCustomValue = Object.prototype.hasOwnProperty.call(customParsed.map, key);
     const scenarioValue = hasScenarioValue ? scenarioParsed.map[key] : defaultValue;
@@ -6557,15 +6624,25 @@ function buildBaseModel(defaultText, scenarioText, customText, mode, targetText)
   });
 
   const commentsByKey = {};
-  for (const row of targetParsed.rows) {
+  for (const row of bundledParsed.rows) {
     if (row.leadingComments && row.leadingComments.length > 0) {
+      commentsByKey[row.key] = row.leadingComments;
+    }
+  }
+  for (const row of defaultParsed.rows) {
+    if (row.leadingComments && row.leadingComments.length > 0 && !commentsByKey[row.key]) {
+      commentsByKey[row.key] = row.leadingComments;
+    }
+  }
+  for (const row of targetParsed.rows) {
+    if (row.leadingComments && row.leadingComments.length > 0 && !commentsByKey[row.key]) {
       commentsByKey[row.key] = row.leadingComments;
     }
   }
 
   return {
     rows,
-    defaultMap: defaultParsed.map,
+    defaultMap,
     effectiveMap: effective,
     sourceOrder: mode === 'scenario' ? ['default', 'scenario', 'custom'] : ['default', 'custom'],
     commentsByKey
@@ -7617,13 +7694,15 @@ function loadBundle(payload) {
     const scenarioBaseText = readTextIfExists(filePaths.base.scenarioPath) || '';
     const customBaseText = readTextIfExists(filePaths.base.userPath) || '';
     const targetBaseText = readTextIfExists(filePaths.base.targetPath) || '';
+    const bundledDefaultBaseText = getBundledC3xBaseDefaultsText();
+    const baseSchemaText = `${bundledDefaultBaseText}\n${defaultBaseText}`;
 
     bundle.tabs.base = {
       title: FILE_SPECS.base.title,
       effectiveSource: filePaths.base.effectiveSource,
       targetPath: filePaths.base.targetPath,
-      fieldDocs: parseIniFieldDocs(defaultBaseText),
-      ...parseIniSectionMap(defaultBaseText),
+      fieldDocs: parseIniFieldDocs(baseSchemaText),
+      ...parseIniSectionMap(baseSchemaText),
       ...buildBaseModel(defaultBaseText, scenarioBaseText, customBaseText, mode, targetBaseText)
     };
 
@@ -10996,6 +11075,279 @@ function collectScenarioAtlasCopies({ tabs, targetContentRoot }) {
   return copySpecs;
 }
 
+function sanitizePcxFileName(fileName) {
+  const raw = path.basename(normalizeAssetReferencePath(fileName)) || 'district.pcx';
+  const dot = raw.lastIndexOf('.');
+  const stemRaw = dot > 0 ? raw.slice(0, dot) : raw;
+  const extRaw = dot > 0 ? raw.slice(dot) : '.pcx';
+  const stem = stemRaw.replace(/[<>:"|?*\x00-\x1f]/g, '_').trim() || 'district';
+  const ext = /\.pcx$/i.test(extRaw) ? extRaw : '.pcx';
+  return `${stem}${ext}`;
+}
+
+function resolveDistrictPcxPathFromRoots(fileName, c3xPath, scenarioRoots) {
+  const normalizedFileName = normalizeAssetReferencePath(fileName);
+  if (!normalizedFileName) return null;
+  if (isAbsoluteFilesystemPath(normalizedFileName)) {
+    try {
+      return fs.existsSync(normalizedFileName) && fs.statSync(normalizedFileName).isFile() ? normalizedFileName : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  const startsWithArt = /^art\//i.test(normalizedFileName);
+  const candidates = [];
+  const addCandidate = (candidate) => {
+    if (!candidate || candidates.includes(candidate)) return;
+    candidates.push(candidate);
+  };
+  (Array.isArray(scenarioRoots) ? scenarioRoots : []).forEach((root) => {
+    if (!root) return;
+    if (startsWithArt) {
+      addCandidate(path.join(root, normalizedFileName));
+      if (!/^art\/districts\//i.test(normalizedFileName)) {
+        addCandidate(path.join(root, 'Art', 'Districts', '1200', path.basename(normalizedFileName)));
+      }
+    } else {
+      addCandidate(path.join(root, 'Art', 'Districts', 'Summer', '1200', normalizedFileName));
+      addCandidate(path.join(root, 'Art', 'Districts', '1200', normalizedFileName));
+      addCandidate(path.join(root, 'Art', 'Summer', '1200', normalizedFileName));
+      addCandidate(path.join(root, 'Art', '1200', normalizedFileName));
+    }
+  });
+  if (c3xPath) {
+    if (startsWithArt) {
+      addCandidate(path.join(c3xPath, normalizedFileName));
+      if (!/^art\/districts\//i.test(normalizedFileName)) {
+        addCandidate(path.join(c3xPath, 'Art', 'Districts', '1200', path.basename(normalizedFileName)));
+      }
+    } else {
+      addCandidate(path.join(c3xPath, 'Art', 'Districts', 'Summer', '1200', normalizedFileName));
+      addCandidate(path.join(c3xPath, 'Art', 'Districts', '1200', normalizedFileName));
+      addCandidate(path.join(c3xPath, 'Art', 'DayNight', 'Summer', '1200', normalizedFileName));
+      addCandidate(path.join(c3xPath, 'Art', 'Terrain', normalizedFileName));
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+    } catch (_err) {
+      // skip
+    }
+  }
+  return null;
+}
+
+function getDistrictPcxCandidatePaths(fileName, scenarioRoots) {
+  const normalizedFileName = normalizeAssetReferencePath(fileName);
+  if (!normalizedFileName || isAbsoluteFilesystemPath(normalizedFileName)) return [];
+  const startsWithArt = /^art\//i.test(normalizedFileName);
+  const candidates = [];
+  const addCandidate = (candidate) => {
+    if (!candidate || candidates.includes(candidate)) return;
+    candidates.push(candidate);
+  };
+  (Array.isArray(scenarioRoots) ? scenarioRoots : []).forEach((root) => {
+    if (!root) return;
+    if (startsWithArt) {
+      addCandidate(path.join(root, normalizedFileName));
+      if (!/^art\/districts\//i.test(normalizedFileName)) {
+        addCandidate(path.join(root, 'Art', 'Districts', '1200', path.basename(normalizedFileName)));
+      }
+    } else {
+      addCandidate(path.join(root, 'Art', 'Districts', 'Summer', '1200', normalizedFileName));
+      addCandidate(path.join(root, 'Art', 'Districts', '1200', normalizedFileName));
+      addCandidate(path.join(root, 'Art', 'Summer', '1200', normalizedFileName));
+      addCandidate(path.join(root, 'Art', '1200', normalizedFileName));
+    }
+  });
+  return candidates;
+}
+
+function fileDataMatchesAnyCandidate(data, candidates) {
+  if (!Buffer.isBuffer(data)) return false;
+  return (Array.isArray(candidates) ? candidates : []).some((candidate) => {
+    try {
+      return fs.existsSync(candidate)
+        && fs.statSync(candidate).isFile()
+        && Buffer.compare(fs.readFileSync(candidate), data) === 0;
+    } catch (_err) {
+      return false;
+    }
+  });
+}
+
+function getSectionFieldByKey(section, key) {
+  const needle = String(key || '').trim().toLowerCase();
+  const fields = Array.isArray(section && section.fields) ? section.fields : [];
+  return fields.find((field) => String(field && field.key || '').trim().toLowerCase() === needle) || null;
+}
+
+function getPendingSectionImportMeta(section, tabKey) {
+  const pending = section && section._pendingSectionImport && typeof section._pendingSectionImport === 'object'
+    ? section._pendingSectionImport
+    : null;
+  if (pending) {
+    const pendingTabKey = String(pending.tabKey || '').trim();
+    if (!pendingTabKey || pendingTabKey === tabKey) return pending;
+  }
+  if (tabKey === 'districts' && section && section._pendingDistrictImport && typeof section._pendingDistrictImport === 'object') {
+    return section._pendingDistrictImport;
+  }
+  return null;
+}
+
+function getSectionImageFieldKey(tabKey) {
+  return tabKey === 'districts' ? 'img_paths' : 'img_path';
+}
+
+function collectUsedSectionImageFileNames(sections, tabKey, excludedSection = null) {
+  const used = new Set();
+  const fieldKey = getSectionImageFieldKey(tabKey);
+  (Array.isArray(sections) ? sections : []).forEach((section) => {
+    if (!section || section === excludedSection) return;
+    const field = getSectionFieldByKey(section, fieldKey);
+    tokenizeSectionListPreservingQuotes(field && field.value)
+      .map((token) => sanitizePcxFileName(token).toLowerCase())
+      .filter(Boolean)
+      .forEach((name) => used.add(name));
+  });
+  return used;
+}
+
+function collectUsedDistrictImageFileNames(districtSections, excludedSection = null) {
+  return collectUsedSectionImageFileNames(districtSections, 'districts', excludedSection);
+}
+
+function makeUniqueDistrictImportFileName(baseFileName, usedNames, targetContentRoot, targetScenarioRoots, plannedByName) {
+  const safe = sanitizePcxFileName(baseFileName);
+  const dot = safe.lastIndexOf('.');
+  const stem = dot > 0 ? safe.slice(0, dot) : safe;
+  const ext = dot > 0 ? safe.slice(dot) : '.pcx';
+  const used = usedNames instanceof Set ? usedNames : new Set();
+  for (let idx = 1; idx < 10000; idx += 1) {
+    const candidate = idx === 1 ? safe : `${stem}_${idx}${ext}`;
+    const key = candidate.toLowerCase();
+    if (used.has(key)) continue;
+    if (plannedByName && plannedByName.has(key)) continue;
+    const targetPath = path.join(targetContentRoot, 'Art', 'Districts', '1200', candidate);
+    const targetCandidates = getDistrictPcxCandidatePaths(candidate, targetScenarioRoots);
+    const exists = targetCandidates.some((candidatePath) => {
+      try { return fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile(); } catch (_err) { return false; }
+    });
+    if (exists) continue;
+    return { fileName: candidate, targetPath };
+  }
+  const fallback = `${stem}_${Date.now()}${ext}`;
+  return {
+    fileName: fallback,
+    targetPath: path.join(targetContentRoot, 'Art', 'Districts', '1200', fallback)
+  };
+}
+
+function prepareImportedDistrictArtWrites({ tabs, targetContentRoot, targetScenarioRoots, c3xPath, civ3Path }) {
+  const root = String(targetContentRoot || '').trim();
+  if (!root || !tabs) return { ok: true, writes: [] };
+  const sourceRootsCache = new Map();
+  const plannedByName = new Map();
+  const plannedByContentHash = new Map();
+  const writes = [];
+
+  const getSourceRoots = (sourceBiqPath) => {
+    const sourcePath = String(sourceBiqPath || '').trim();
+    if (!sourcePath) return [];
+    if (sourceRootsCache.has(sourcePath)) return sourceRootsCache.get(sourcePath);
+    let roots = [];
+    try {
+      const sourceBiqTab = loadBiqTab({ mode: 'scenario', civ3Path, scenarioPath: sourcePath });
+      const ctx = deriveScenarioPathContext({ scenarioPath: sourcePath, civ3Path, biqTab: sourceBiqTab });
+      roots = dedupePathList([ctx.biqRoot, ...ctx.searchRoots].filter(Boolean));
+    } catch (_err) {
+      roots = [];
+    }
+    sourceRootsCache.set(sourcePath, roots);
+    return roots;
+  };
+
+  ['districts', 'wonders', 'naturalWonders'].forEach((tabKey) => {
+    const tab = tabs && tabs[tabKey];
+    const sections = (((tab || {}).model || {}).sections || []);
+    if (!Array.isArray(sections) || sections.length === 0) return;
+    const importedSections = sections.filter((section) => getPendingSectionImportMeta(section, tabKey));
+    if (importedSections.length === 0) return;
+    const fieldKey = getSectionImageFieldKey(tabKey);
+
+    importedSections.forEach((section) => {
+      const importMeta = getPendingSectionImportMeta(section, tabKey);
+      const sourceBiqPath = String(importMeta && importMeta.sourceBiqPath || '').trim();
+      const sourceRoots = dedupePathList([
+        ...getSourceRoots(sourceBiqPath),
+        ...(Array.isArray(importMeta && importMeta.sourceScenarioPaths) ? importMeta.sourceScenarioPaths : [])
+      ].filter(Boolean));
+      const field = getSectionFieldByKey(section, fieldKey);
+      if (!field || !String(field.value || '').trim()) return;
+      const tokens = tokenizeSectionListPreservingQuotes(field.value);
+      const usedNames = collectUsedSectionImageFileNames(sections, tabKey, section);
+      const nextTokens = tokens.map((token) => {
+        const originalFileName = sanitizePcxFileName(token);
+        const sourcePath = resolveDistrictPcxPathFromRoots(token, c3xPath, sourceRoots);
+        if (!sourcePath) return originalFileName;
+        if (!isPathWithinAnyRoot(sourcePath, sourceRoots)) return originalFileName;
+        let data = null;
+        try {
+          data = fs.readFileSync(sourcePath);
+        } catch (_err) {
+          return originalFileName;
+        }
+        const originalKey = originalFileName.toLowerCase();
+        const contentHash = crypto.createHash('sha256').update(data).digest('hex');
+        const targetCandidates = getDistrictPcxCandidatePaths(originalFileName, targetScenarioRoots);
+        if (fileDataMatchesAnyCandidate(data, targetCandidates)) {
+          return originalFileName;
+        }
+        const plannedForContent = plannedByContentHash.get(contentHash);
+        if (plannedForContent && Buffer.compare(plannedForContent.data, data) === 0) {
+          return plannedForContent.fileName;
+        }
+        const canUseOriginalName = !usedNames.has(originalKey)
+          && !plannedByName.has(originalKey)
+          && !targetCandidates.some((candidatePath) => {
+            try { return fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile(); } catch (_err) { return false; }
+          });
+        const target = canUseOriginalName
+          ? {
+              fileName: originalFileName,
+              targetPath: path.join(root, 'Art', 'Districts', '1200', originalFileName)
+            }
+          : makeUniqueDistrictImportFileName(originalFileName, usedNames, root, targetScenarioRoots, plannedByName);
+        usedNames.add(String(target.fileName || '').toLowerCase());
+        plannedByName.set(String(target.fileName || '').toLowerCase(), {
+          fileName: target.fileName,
+          targetPath: target.targetPath,
+          sourcePath,
+          data
+        });
+        plannedByContentHash.set(contentHash, {
+          fileName: target.fileName,
+          targetPath: target.targetPath,
+          sourcePath,
+          data
+        });
+        writes.push({
+          kind: 'districtArt',
+          path: target.targetPath,
+          sourcePath,
+          data
+        });
+        return target.fileName;
+      });
+      field.value = nextTokens.filter(Boolean).join(', ');
+    });
+  });
+
+  return { ok: true, writes };
+}
+
 function buildSavePlan(payload) {
   const mode = payload.mode === 'scenario' ? 'scenario' : 'global';
   const c3xPath = payload.c3xPath || '';
@@ -11063,6 +11415,12 @@ function buildSavePlan(payload) {
       ? payload.dirtyTabs.map((tabKey) => String(tabKey || ''))
       : []
   );
+  const referenceTextDirtyTabs = new Set(
+    REFERENCE_TAB_SPECS.map((spec) => spec.key)
+      .concat(['terrain'])
+  );
+  const shouldSaveScenarioReferenceText = dirtyTabs.size === 0
+    || Array.from(dirtyTabs).some((tabKey) => referenceTextDirtyTabs.has(String(tabKey || '')));
   const unitValidationError = validateUnitAnimationReferenceChanges({
     tabs: payload.tabs || {},
     mode,
@@ -11080,6 +11438,24 @@ function buildSavePlan(payload) {
 
   const sectionTabsChangedByImprovementRenames = applyImprovementNameRenamesToSectionedTabs(payload.tabs || {});
   sectionTabsChangedByImprovementRenames.forEach((tabKey) => dirtyTabs.add(tabKey));
+
+  let importedDistrictArtWrites = { ok: true, writes: [] };
+  if (mode === 'scenario' && (dirtyTabs.size === 0 || dirtyTabs.has('districts') || dirtyTabs.has('wonders') || dirtyTabs.has('naturalWonders'))) {
+    importedDistrictArtWrites = prepareImportedDistrictArtWrites({
+      tabs: payload.tabs || {},
+      targetContentRoot: scenarioContext.contentWriteRoot || scenarioDir,
+      targetScenarioRoots: dedupePathList([
+        scenarioContext.contentWriteRoot || scenarioDir,
+        scenarioContext.biqRoot,
+        ...scenarioContext.searchRoots
+      ].filter(Boolean)),
+      c3xPath,
+      civ3Path
+    });
+    if (!importedDistrictArtWrites || !importedDistrictArtWrites.ok) {
+      return { ok: false, error: importedDistrictArtWrites && importedDistrictArtWrites.error ? importedDistrictArtWrites.error : 'Failed to prepare imported district PCX files.' };
+    }
+  }
 
   const baseTab = payload.tabs.base;
   const shouldSaveBase = dirtyTabs.size === 0 || dirtyTabs.has('base');
@@ -11124,14 +11500,42 @@ function buildSavePlan(payload) {
       preferredEncoding: textFileEncoding,
       fallbackEncoding: 'windows-1252'
     });
-    plannedWrites.push({
-      kind,
-      path: targetPath,
-      data: encodeTextBuffer(serialized, resolvedEncoding.encoding, { bom: resolvedEncoding.bom }),
-      encoding: resolvedEncoding.encoding,
-      bom: resolvedEncoding.bom
+    const data = encodeTextBuffer(serialized, resolvedEncoding.encoding, { bom: resolvedEncoding.bom });
+    if (!bufferMatchesExistingFile(targetPath, data)) {
+      plannedWrites.push({
+        kind,
+        path: targetPath,
+        data,
+        encoding: resolvedEncoding.encoding,
+        bom: resolvedEncoding.bom
+      });
+      saveReport.push({ kind, path: targetPath });
+    }
+  }
+
+  if (dirtyTabs.size === 0 || dirtyTabs.has('animations')) {
+    const tileAnimationIniRepairs = collectTileAnimationIniRepairs(payload.tabs || {}, {
+      mode,
+      c3xPath,
+      scenarioContentRoot: scenarioContext.contentWriteRoot || scenarioDir
     });
-    saveReport.push({ kind, path: targetPath });
+    for (const repair of tileAnimationIniRepairs) {
+      if (!repair || repair.ok === false) {
+        return { ok: false, error: repair && repair.error ? repair.error : 'Failed to prepare Tile Animation INI repair.' };
+      }
+      const protectErr = failIfProtected(repair.targetPath, 'Tile Animation INI target');
+      if (protectErr) return { ok: false, error: protectErr };
+      if (!bufferMatchesExistingFile(repair.targetPath, repair.buffer)) {
+        plannedWrites.push({
+          kind: 'tileAnimationIni',
+          path: repair.targetPath,
+          sourcePath: repair.sourcePath,
+          data: repair.buffer,
+          encoding: 'windows-1252'
+        });
+        saveReport.push({ kind: 'tileAnimationIni', path: repair.targetPath, applied: 1 });
+      }
+    }
   }
 
   const musicTab = payload.tabs && payload.tabs.music;
@@ -11335,8 +11739,8 @@ function buildSavePlan(payload) {
       return { ok: false, error: err && err.message ? err.message : 'Failed to localize scenario art.' };
     }
 
-    const pediaIconsEdits = collectPediaIconsReferenceEdits(payload.tabs || {});
-    {
+    if (shouldSaveScenarioReferenceText) {
+      const pediaIconsEdits = collectPediaIconsReferenceEdits(payload.tabs || {});
       const sourceDetails = (((payload.tabs || {}).civilizations || {}).sourceDetails || {});
       const explicitPediaTarget = String(sourceDetails.pediaIconsScenarioWrite || sourceDetails.pediaIconsScenario || '').trim();
       const targetPath = explicitPediaTarget || path.join(scenarioContext.contentWriteRoot || scenarioDir, 'Text', 'PediaIcons.txt');
@@ -11385,8 +11789,8 @@ function buildSavePlan(payload) {
       }
     }
 
-    const civilopediaEdits = collectCivilopediaReferenceEdits(payload.tabs || {});
-    {
+    if (shouldSaveScenarioReferenceText) {
+      const civilopediaEdits = collectCivilopediaReferenceEdits(payload.tabs || {});
       const sourceDetails = (((payload.tabs || {}).civilizations || {}).sourceDetails || {});
       const explicitTarget = (sourceDetails.civilopediaScenario || '').trim();
       const targetPath = explicitTarget || path.join(scenarioContext.contentWriteRoot || scenarioDir, 'Text', 'Civilopedia.txt');
@@ -11567,6 +11971,17 @@ function buildSavePlan(payload) {
           detail: metadataWrite.detail
         });
       }
+    }
+
+    for (const districtWrite of (importedDistrictArtWrites && importedDistrictArtWrites.writes) || []) {
+      const protectErr = failIfProtected(districtWrite.path, 'scenario district PCX target');
+      if (protectErr) return { ok: false, error: protectErr };
+      if (isProtectedBaseCiv3Path(civ3Path, districtWrite.path)) {
+        return { ok: false, error: `Refusing to modify base Civilization III file (scenario district PCX target): ${districtWrite.path}` };
+      }
+      if (bufferMatchesExistingFile(districtWrite.path, districtWrite.data)) continue;
+      plannedWrites.push(districtWrite);
+      saveReport.push({ kind: 'districtArt', path: districtWrite.path, sourcePath: districtWrite.sourcePath });
     }
 
     // Copy art files referenced by imported entries into the local scenario content root.
@@ -14694,6 +15109,117 @@ function collectUnitIniReferenceEdits(tabs, scenarioDir) {
   return out;
 }
 
+function getIniManifestSectionFields(manifest, sectionName) {
+  const target = String(sectionName || '').trim().toUpperCase();
+  const section = (Array.isArray(manifest && manifest.sections) ? manifest.sections : [])
+    .find((candidate) => String(candidate && candidate.name || '').trim().toUpperCase() === target);
+  return (Array.isArray(section && section.fields) ? section.fields : [])
+    .map((field) => ({
+      key: String(field && field.key || '').trim(),
+      keyUpper: String(field && (field.keyUpper || field.key) || '').trim().toUpperCase(),
+      value: String(field && field.value || '')
+    }))
+    .filter((field) => field.key);
+}
+
+function isSafeRelativeTileAnimationIniPath(value) {
+  const rel = normalizeRelativePath(value);
+  if (!rel) return false;
+  if (isAbsoluteFilesystemPath(value)) return false;
+  return !rel.split('/').some((part) => part === '..');
+}
+
+function normalizeTileAnimationIniRepairRelativePath(value) {
+  let rel = normalizeRelativePath(value);
+  if (rel.toLowerCase().startsWith('art/animations/')) rel = rel.slice('art/animations/'.length);
+  if (!rel) return '';
+  if (!/\.[A-Za-z0-9]+$/.test(path.basename(rel))) rel = `${rel}.INI`;
+  return rel;
+}
+
+function buildCanonicalTileAnimationIniBuffer({ sourcePath, flcFileName }) {
+  const flc = String(flcFileName || '').trim();
+  if (!/\.flc$/i.test(flc) || /[\\/]/.test(flc)) {
+    return { ok: false, error: `Invalid tile animation FLC file name: ${flc || '(empty)'}` };
+  }
+  const source = String(sourcePath || '').trim();
+  let lineEnding = '\r\n';
+  let manifest = null;
+  if (source && fs.existsSync(source)) {
+    const raw = fs.readFileSync(source);
+    const text = raw.toString('latin1');
+    lineEnding = text.includes('\r\n') ? '\r\n' : '\n';
+    manifest = parseUnitAnimationIni(source);
+  }
+  const speedFields = getIniManifestSectionFields(manifest, 'Speed');
+  const timingFields = getIniManifestSectionFields(manifest, 'Timing');
+  const versionFields = getIniManifestSectionFields(manifest, 'Version');
+  const paletteFields = getIniManifestSectionFields(manifest, 'Palette');
+  const lines = [];
+  const pushSection = (name, fields) => {
+    if (lines.length > 0) lines.push('');
+    lines.push(`[${name}]`);
+    fields.forEach((field) => {
+      lines.push(`${field.key}=${field.value}`);
+    });
+  };
+  pushSection('Speed', speedFields.length > 0 ? speedFields : [
+    { key: 'Normal Speed', value: '225' },
+    { key: 'Fast Speed', value: '225' }
+  ]);
+  pushSection('Animations', TILE_ANIMATION_INI_ANIMATION_KEYS.map((key) => ({
+    key,
+    value: String(key).toUpperCase() === 'DEFAULT' || String(key).toUpperCase() === 'ATTACK1' ? flc : ''
+  })));
+  if (timingFields.length > 0) pushSection('Timing', timingFields);
+  pushSection('Sound Effects', TILE_ANIMATION_INI_ANIMATION_KEYS.map((key) => ({ key, value: '' })));
+  pushSection('Version', versionFields.length > 0 ? versionFields : [{ key: 'VERSION', value: '1' }]);
+  pushSection('Palette', paletteFields.length > 0 ? paletteFields : [{ key: 'PALETTE', value: '' }]);
+  const text = `${lines.join(lineEnding).replace(/\r?\n$/g, '')}${lineEnding}`;
+  return { ok: true, buffer: Buffer.from(text, 'latin1') };
+}
+
+function collectTileAnimationIniRepairs(tabs, { mode, c3xPath, scenarioContentRoot }) {
+  const out = [];
+  const sections = (((tabs || {}).animations || {}).model || {}).sections;
+  if (!Array.isArray(sections)) return out;
+  sections.forEach((section) => {
+    const pending = section && section.pendingTileAnimationIniRepair;
+    if (!pending || typeof pending !== 'object') return;
+    if (mode !== 'scenario') {
+      out.push({ ok: false, error: 'Tile Animation INI repairs can only be staged in Scenario mode.' });
+      return;
+    }
+    const rawIniPath = pending.iniPath || getSectionFieldDisplayName(section, 'ini_path', '') || '';
+    const rel = normalizeTileAnimationIniRepairRelativePath(rawIniPath);
+    if (!rel || !isSafeRelativeTileAnimationIniPath(rel)) {
+      out.push({ ok: false, error: `Unsafe tile animation INI path: ${String(rawIniPath || '').trim() || '(empty)'}` });
+      return;
+    }
+    const root = mode === 'scenario' ? String(scenarioContentRoot || '').trim() : String(c3xPath || '').trim();
+    if (!root) {
+      out.push({ ok: false, error: 'Could not resolve the Tile Animation INI repair target root.' });
+      return;
+    }
+    const targetPath = path.join(root, 'Art', 'Animations', rel.replace(/\//g, path.sep));
+    const built = buildCanonicalTileAnimationIniBuffer({
+      sourcePath: String(pending.sourcePath || '').trim(),
+      flcFileName: String(pending.flcFileName || '').trim()
+    });
+    if (!built.ok) {
+      out.push({ ok: false, error: built.error || 'Failed to build Tile Animation INI repair.' });
+      return;
+    }
+    out.push({
+      ok: true,
+      targetPath,
+      sourcePath: String(pending.sourcePath || '').trim(),
+      buffer: built.buffer
+    });
+  });
+  return out;
+}
+
 function isSafeUnitAnimationFolderName(name) {
   const value = String(name || '').trim();
   if (!value) return false;
@@ -14961,6 +15487,7 @@ module.exports = {
   buildScenarioDiplomacyEditResult,
   collectPediaIconsReferenceEdits,
   pickScenarioReferenceArtTargetRelativePath,
+  prepareImportedDistrictArtWrites,
   parseDiplomacyDocumentWithOrder,
   serializeDiplomacyDocumentWithOrder,
   parseDiplomacySlotOptions,

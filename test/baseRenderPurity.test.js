@@ -59,6 +59,182 @@ test('base field renderers do not mutate rows during initial render', () => {
   );
 });
 
+test('R28 unit counter and visibility base fields use structured renderers', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /function parseUnitTypeTagItems\(value\)/,
+    'unit_type_tags should have a quote-aware structured parser'
+  );
+  assert.match(
+    text,
+    /if \(row\.key === 'unit_type_tags'\)/,
+    'unit_type_tags should render with a dedicated structured editor'
+  );
+  assert.match(
+    text,
+    /if \(row\.key === 'counter_rules'\)/,
+    'counter_rules should render with a dedicated structured editor'
+  );
+  assert.match(
+    text,
+    /const C3X_VISIBILITY_ARRAY_KEYS = Object\.freeze\(\{[\s\S]*?terrain_visibility_see_height: 'integer'[\s\S]*?terrain_visibility_flat_bonus: 'boolean'[\s\S]*?\}\);/,
+    'fixed terrain visibility arrays should keep their dedicated per-field array renderer'
+  );
+  assert.doesNotMatch(
+    text,
+    /C3X_VISIBILITY_MATRIX_KEYS/,
+    'terrain visibility fields should not be intercepted into a grouped matrix'
+  );
+  assert.doesNotMatch(
+    text,
+    /buildTerrainVisibilityMatrix/,
+    'terrain visibility fields should render as separate Base rows'
+  );
+  assert.doesNotMatch(
+    text,
+    /kind: 'C3X Field Group'[\s\S]*?Terrain Visibility/,
+    'global search should not replace individual terrain visibility fields with a grouped result'
+  );
+  assert.match(
+    text,
+    /function navigateToBaseField\(rawKey, options = \{\}\)[\s\S]*?state\.activeTab = 'base';[\s\S]*?state\.baseFilter = filterValue;[\s\S]*?focusRenderedBaseRowByKey\(key\);/,
+    'global search should navigate to Base fields through a shared focus helper'
+  );
+  assert.match(
+    text,
+    /kind: 'C3X Field',[\s\S]*?title: `\$\{tabTitle\}: \$\{friendlyName\}`,[\s\S]*?search: `\$\{tabTitle\} c3x base field setting \$\{friendlyName\} \$\{rawKey\} \$\{docs\} \$\{rowValue\} \$\{releaseLabel\}`,[\s\S]*?navigateToBaseField\(rawKey\);/,
+    'global search should keep indexing individual Base fields'
+  );
+  assert.match(
+    text,
+    /row\.append\(kind, title, subtitle\);/,
+    'global search result labels should be rendered as text nodes instead of HTML strings'
+  );
+  assert.match(
+    text,
+    /let renderedTab = null;[\s\S]*?try \{[\s\S]*?renderedTab = renderBaseTab\(tab\);[\s\S]*?\} catch \(err\) \{[\s\S]*?Could not render/,
+    'active tab rendering should not clear the content pane before a successful render'
+  );
+  assert.match(
+    text,
+    /makeTerrainOptionPreviewIcon\(col\.previewKey \|\| col\.key\)/,
+    'fixed terrain visibility arrays should include terrain thumbnail previews'
+  );
+  assert.match(
+    text,
+    /\{ key: 'hills', previewKey: 'hill', label: 'HILLS' \}/,
+    'fixed terrain visibility thumbnails should map C3X hills to the terrain preview source'
+  );
+  assert.match(
+    text,
+    /state\.baseRowElementsByKey\.set\(rowKeyLower, r\);[\s\S]*?const searchText = `\$\{rawKey\} \$\{friendlyName\} \$\{docs\} \$\{releaseSearch\}`\.toLowerCase\(\);[\s\S]*?rowElements\.push\(\{ key: rowKeyLower, searchText, el: r, group: groupInfo\.group \}\);/,
+    'each terrain visibility key should remain searchable as its own Base row'
+  );
+  assert.match(
+    text,
+    /const visibilityByEl = new Map\(\);[\s\S]*?visibilityByEl\.set\(entry\.el, !!\(visibilityByEl\.get\(entry\.el\) \|\| matches\)\);[\s\S]*?rowEl\.style\.display = visible \? '' : 'none';/,
+    'base search should keep using row visibility aggregation for lazy-mounted rows'
+  );
+  assert.match(
+    text,
+    /if \(visible && needle && rowEl && typeof rowEl\._ensureBaseInputMounted === 'function'\) \{[\s\S]*?rowEl\._ensureBaseInputMounted\(\);/,
+    'base search should mount matching lazy rows so search results are visible'
+  );
+  assert.match(
+    text,
+    /const searchText = `\$\{rawKey\} \$\{friendlyName\} \$\{docs\} \$\{releaseSearch\}`\.toLowerCase\(\);/,
+    'base search should continue indexing each terrain visibility row by its specific key and help text'
+  );
+  assert.match(
+    text,
+    /if \(row\.key === 'unit_visibility_rules'\)/,
+    'unit_visibility_rules should render with a dedicated structured editor'
+  );
+  assert.match(
+    text,
+    /targetLabel\.textContent = 'Applies To'/,
+    'unit_visibility_rules should label its target picker'
+  );
+  assert.match(
+    text,
+    /modeLabel\.textContent = 'Fortified Bonus Mode'/,
+    'unit_visibility_rules should label the fortification mode selector'
+  );
+  assert.doesNotMatch(
+    text,
+    /items\.length === 0\) items = \[\{ targets: \['Sea'\]/,
+    'empty unit_visibility_rules should not synthesize the default Sea rule'
+  );
+  assert.match(
+    text,
+    /if \(String\(row && row\.key \|\| ''\)\.trim\(\) === 'unit_type_tags'\) \{[\s\S]*?'counter_rules'[\s\S]*?remountBaseInputByKey\(dependentKey\)/,
+    'counter_rules should refresh when unit_type_tags changes so tag labels are immediately available'
+  );
+  assert.match(
+    text,
+    /searchPlaceholder: 'Friendly unit or tag\.\.\.',[\s\S]*?noneLabel: 'Any \(\*\)',[\s\S]*?includeNone: false/,
+    'counter_rules attacker picker should not render both the none row and wildcard Any row'
+  );
+  assert.match(
+    text,
+    /createDefaultItem: \(\) => \(\{ attacker: '\*', defender: '\*'[\s\S]*?searchPlaceholder: 'Enemy unit or tag\.\.\.',[\s\S]*?noneLabel: 'Any \(\*\)',[\s\S]*?includeNone: false/,
+    'counter_rules defender picker should default to the wildcard Any row'
+  );
+  assert.match(
+    text,
+    /makeSectionTitle\('Match'\)[\s\S]*?makeLabeledControl\('Friendly unit\/tag', attacker\)[\s\S]*?makeLabeledControl\('Enemy unit\/tag', defender\)/,
+    'counter_rules should render the unit match as a friendly-vs-enemy pair'
+  );
+  assert.match(
+    text,
+    /vs\.className = 'c3x-counter-vs';[\s\S]*?vs\.textContent = 'vs\.';/,
+    'counter_rules should show a visible vs. separator between friendly and enemy match pickers'
+  );
+  assert.match(
+    text,
+    /\['Friendly modifiers', 'Friendly', \[\['selfAtk', 'Attack %'\], \['selfDef', 'Defense %'\], \['selfBombard', 'Bombard %'\]\]\]/,
+    'counter_rules should group self effects under user-facing friendly modifiers'
+  );
+  assert.doesNotMatch(
+    text,
+    /input\.placeholder = 'unchanged'/,
+    'counter_rules modifier inputs should not show an unchanged placeholder'
+  );
+  assert.match(
+    text,
+    /function makeCounterRuleTerrainPicker\(currentValue, onSelect\)[\s\S]*?makeTerrainOptionPreviewIcon/,
+    'counter_rules terrain condition should use a thumbnail-backed structured picker'
+  );
+  assert.match(
+    text,
+    /function makeCounterRuleDistrictPicker\(currentValue, onSelect\)[\s\S]*?loadDistrictRepresentativePreview/,
+    'counter_rules district condition should use a thumbnail-backed structured picker'
+  );
+  assert.match(
+    text,
+    /const C3X_COUNTER_EXPERIENCE_OPTIONS = Object\.freeze\(\[[\s\S]*?\{ value: 'conscript', label: 'Conscript' \}[\s\S]*?\{ value: 'regular', label: 'Regular' \}[\s\S]*?\{ value: 'veteran', label: 'Veteran' \}[\s\S]*?\{ value: 'elite', label: 'Elite' \}/,
+    'counter_rules experience conditions should expose English aliases'
+  );
+  assert.match(
+    text,
+    /function makeCounterRuleExperienceSelect\(value, onSelect\)[\s\S]*?document\.createElement\('select'\)/,
+    'counter_rules experience conditions should use simple no-art dropdowns'
+  );
+  assert.match(
+    text,
+    /const terrain = makeCounterRuleTerrainPicker\(item\.terrain[\s\S]*?const district = makeCounterRuleDistrictPicker\(item\.district[\s\S]*?const selfExp = makeCounterRuleExperienceSelect\(item\.selfExp[\s\S]*?const enemyExp = makeCounterRuleExperienceSelect\(item\.enemyExp/,
+    'counter_rules optional conditions should use structured controls instead of raw text inputs'
+  );
+  assert.match(
+    text,
+    /makeSectionTitle\('Optional conditions'\)[\s\S]*?makeLabeledControl\('Only on terrain', terrain\)[\s\S]*?makeLabeledControl\('Enemy experience', enemyExp\)/,
+    'counter_rules should label optional terrain, district, and experience conditions'
+  );
+});
+
 test('Rules Citizens hides dangling BIQ Civilopedia entry field', () => {
   const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
   const text = fs.readFileSync(rendererPath, 'utf8');
@@ -470,10 +646,10 @@ test('C3X bitfield base settings serialize with whitespace-separated bracket lis
     'C3X multi-choice bitfield controls must not write comma-delimited lists'
   );
 
-  assert.match(
+  assert.doesNotMatch(
     text,
     /show_tile_destruct_animation_after:\s*\['bombard', 'bomb', 'pillage'\]/,
-    'show_tile_destruct_animation_after should use the same structured bitfield editor as other C3X token lists'
+    'show_tile_destruct_animation_after should stay quarantined out of active R28 bitfield controls'
   );
 });
 
@@ -560,6 +736,7 @@ test('C3X source-backed enum readers match renderer and manifest options', () =>
     unit_cycle_search_criteria: ['standard', 'similar-near-start', 'similar-near-destination'],
     work_area_limit: ['none', 'cultural', 'cultural-min-2', 'cultural-or-adjacent'],
     day_night_cycle_mode: ['off', 'timer', 'user-time', 'every-turn', 'specified'],
+    pinned_season_for_seasonal_cycle: ['summer', 'fall', 'winter', 'spring'],
     override_no_ai_patrol: ['none', 'one', 'zero'],
     override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random'],
     distribution_hub_yield_division_mode: ['flat', 'scale-by-city-count'],
@@ -704,8 +881,20 @@ test('C3X base undo snapshots are scoped to the base tab and restore supports pa
 
   assert.match(
     text,
-    /if \(normalizedKey\.startsWith\('RULE_FIELD:'\)\) \{[\s\S]*?return snapshotSelectedEditableTabs\(\{\s*tabKeys: \[tabKey\],\s*scope: `tab:\$\{tabKey\}`\s*\}\);[\s\S]*?if \(normalizedKey\.startsWith\('BIQ_FIELD:'\)\) \{[\s\S]*?const tabKey = String\(state\.activeTab \|\| ''\)\.trim\(\)\.toLowerCase\(\);[\s\S]*?return snapshotSelectedEditableTabs\(\{\s*tabKeys: \[tabKey\],\s*scope: `tab:\$\{tabKey\}`\s*\}\);/m,
+    /if \(normalizedKey\.startsWith\('RULE_FIELD:'\)\) \{[\s\S]*?const tabKey = normalizeEditableTabKey\(parts\[1\]\);[\s\S]*?return snapshotSelectedEditableTabs\(\{\s*tabKeys: \[tabKey\],\s*scope: `tab:\$\{tabKey\}`\s*\}\);[\s\S]*?if \(normalizedKey\.startsWith\('BIQ_FIELD:'\)\) \{[\s\S]*?const tabKey = normalizeEditableTabKey\(state\.activeTab\);[\s\S]*?return snapshotSelectedEditableTabs\(\{\s*tabKeys: \[tabKey\],\s*scope: `tab:\$\{tabKey\}`\s*\}\);/m,
     'BIQ-backed field edits should capture tab-scoped undo snapshots instead of falling back to full editable-tab snapshots'
+  );
+
+  assert.match(
+    text,
+    /function normalizeEditableTabKey\(tabKey\) \{[\s\S]*?EDITABLE_TAB_KEYS\.find\(\(key\) => String\(key \|\| ''\)\.toLowerCase\(\) === lower\)/,
+    'Undo snapshot keys should canonicalize camelCase tabs such as naturalWonders instead of lowercasing them into missing tab keys'
+  );
+
+  assert.match(
+    text,
+    /if \(normalizedKey\.startsWith\('SECTION_ITEM:'\)\) \{[\s\S]*?const tabKey = normalizeEditableTabKey\(parts\[1\]\);[\s\S]*?return buildSerializedSectionSnapshot\(tabKey, sections\[sectionIndex\], sectionIndex\);/,
+    'Sectioned item edits should capture serialized section snapshots so Undo avoids the full restore modal'
   );
 
   assert.match(
@@ -724,6 +913,193 @@ test('C3X base undo snapshots are scoped to the base tab and restore supports pa
     text,
     /const isScopedBaseSnapshot = isScopedBaseUndoSnapshot\(targetSnapshot\);[\s\S]*?const isSerializedReferenceEntrySnapshot = !!\([\s\S]*?targetSnapshot\.kind === 'serialized-reference-entry'[\s\S]*?\);[\s\S]*?const isSerializedSectionSnapshot = !!\([\s\S]*?targetSnapshot\.kind === 'serialized-section-item'[\s\S]*?\);[\s\S]*?const isScopedSectionTabSnapshot = isScopedSectionTabUndoSnapshot\(targetSnapshot\);[\s\S]*?const isScopedTabSnapshot = isScopedTabUndoSnapshot\(targetSnapshot\);[\s\S]*?if \(\s*!isScopedBaseSnapshot[\s\S]*?!isSerializedReferenceEntrySnapshot[\s\S]*?&& !isSerializedSectionSnapshot[\s\S]*?&& !isScopedSectionTabSnapshot[\s\S]*?&& !isScopedTabSnapshot[\s\S]*?await loadBundleAndRender\(\{/m,
     'Scoped base, entry-scoped reference, section-scoped, and tab-scoped undo should skip the scenario reload path so unrelated in-memory edits are not discarded before the snapshot is applied'
+  );
+});
+
+test('animation direction changes refresh FLC previews', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /animations:\s*new Set\(\['ini_path', 'frame_time_seconds', 'direction'\]\)/,
+    'Tile Animation direction should be treated as a preview-driving field'
+  );
+
+  assert.match(
+    text,
+    /const animationSpec = parseNaturalWonderAnimationSpec\(firstAnimationSpec\);[\s\S]*?const directionIndex = resolveAnimationDirectionIndexFromValue\(animationSpec\.direction\);[\s\S]*?kind: 'animationIni'[\s\S]*?c3xPath: state\.settings\.c3xPath[\s\S]*?iniPath,[\s\S]*?directionIndex,[\s\S]*?scenarioPath: state\.settings\.scenarioPath,[\s\S]*?scenarioPaths: getScenarioPreviewPaths\(\)/,
+    'Natural Wonder animation preview requests should pass the animation spec direction into the FLC decoder'
+  );
+});
+
+test('District animations use the shared animation item editor and preview path', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /\{ key: 'animation', label: 'Animation Items', desc: 'Custom FLC animations shown over completed districts\.', type: 'text', multi: true, minRelease: 'R28' \}/,
+    'District schema should expose repeated animation items'
+  );
+  assert.match(
+    text,
+    /if \(state\.activeTab === 'districts' && effectiveField\.key === 'animation'\) \{[\s\S]*?renderNaturalWonderAnimationSpecsEditor\(section, onValueChange, \{[\s\S]*?includeDirection: false,[\s\S]*?includeCultures: true,[\s\S]*?includeEras: true,/,
+    'District animation items should reuse the structured animation editor with district culture and era filters'
+  );
+  assert.match(
+    text,
+    /districts:\s*new Set\(\[[^\]]*'animation'[^\]]*\]\)/,
+    'District animation edits should refresh the preview area'
+  );
+  assert.match(
+    text,
+    /renderSectionAnimationPreviewCard\(section, previewWrap, tabKey, \(\) => generation === previewRefreshGeneration\);/,
+    'District previews should include the first configured district animation FLC'
+  );
+  assert.match(
+    text,
+    /renderSectionAnimationPreviewCard[\s\S]*?\{ skipBlankMagentaFrames: true \}/,
+    'District animation previews should use explicit FLC preview options from the shared preview renderer'
+  );
+  assert.match(
+    text,
+    /function renderAnimationSpecInlinePreview\(entry, host\)[\s\S]*?kind: 'animationIni'[\s\S]*?renderRgbaPreview\([\s\S]*?'Preview'[\s\S]*?\{ skipBlankMagentaFrames: true \}/,
+    'Structured animation item cards should render an inline FLC preview'
+  );
+  assert.match(
+    text,
+    /previewHost\.className = 'natural-animation-inline-preview'[\s\S]*?refreshInlinePreview = \(\) => renderAnimationSpecInlinePreview\(entry, previewHost\)/,
+    'Natural Wonder and District animation editors should mount inline preview hosts per item'
+  );
+  assert.doesNotMatch(
+    text,
+    /topHint\.textContent = districtDisplay\.secondary \|\| districtDisplay\.tooltip/,
+    'District detail headers should not render tooltip text as a visible header hint'
+  );
+});
+
+test('Animation item Add renders a blank card before serialization', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+  const match = text.match(/function renderNaturalWonderAnimationSpecsEditor\(section, onValueChange, config = \{\}\) \{[\s\S]*?\nfunction renderDistrictSingleResourcePicker/);
+  assert.ok(match, 'Expected shared animation spec editor body');
+  const body = match[0];
+  const addBlock = body.match(/add\.addEventListener\('click', \(\) => \{[\s\S]*?\n\s*\}\);/);
+  assert.ok(addBlock, 'Expected Add Animation click handler');
+
+  assert.match(
+    body,
+    /const renderSpecs = \(\) => \{[\s\S]*?wrap\.innerHTML = '';[\s\S]*?specs\.forEach/,
+    'Animation spec editor should be able to locally re-render the spec cards'
+  );
+  assert.match(
+    addBlock[0],
+    /specs\.push\(makeEmptyAnimationSpec\(\)\);[\s\S]*?renderSpecs\(\);/,
+    'Add Animation should show a blank card immediately'
+  );
+  assert.doesNotMatch(
+    addBlock[0],
+    /commit\(|renderActiveTab/,
+    'Add Animation should not immediately serialize away the blank spec'
+  );
+});
+
+test('Tile Animation frame-time drags keep the current FLC preview mounted', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+  const blockStart = text.indexOf("if (state.activeTab === 'animations' && effectiveField.key === 'frame_time_seconds') {");
+  assert.ok(blockStart >= 0, 'Expected Tile Animation frame-time slider renderer');
+  const blockEnd = text.indexOf("if (state.activeTab === 'animations' && effectiveField.key === 'resource_type') {", blockStart);
+  assert.ok(blockEnd > blockStart, 'Expected next Tile Animation renderer block');
+  const block = text.slice(blockStart, blockEnd);
+  const inputStart = block.indexOf("slider.addEventListener('input'");
+  const changeStart = block.indexOf("slider.addEventListener('change'");
+  assert.ok(inputStart >= 0 && changeStart > inputStart, 'Expected separate input and change handlers');
+  const inputBlock = block.slice(inputStart, changeStart);
+
+  assert.doesNotMatch(
+    inputBlock,
+    /onValueChange|setSingleFieldValue/,
+    'Dragging the Tile Animation frame-time slider should update only the label, not reload or commit the preview'
+  );
+
+  assert.match(
+    block.slice(changeStart),
+    /setSingleFieldValue\(section, effectiveField\.key, serialized, \{ captureUndo: false \}\);/,
+    'Mouseup/change should commit the new frame time so the mounted preview loop can pick up the delay'
+  );
+});
+
+test('Tile Animations use the shared section add/delete action row', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /const useInlineFilterActions = tabKey === 'districts' \|\| tabKey === 'wonders' \|\| tabKey === 'naturalWonders' \|\| tabKey === 'animations';/,
+    'Tile Animations should use the standard section tab Add/Delete action row'
+  );
+
+  assert.match(
+    text,
+    /if \(!useInlineFilterActions\) \{[\s\S]*?addSectionBtn\.textContent = `\+ Add \$\{schema\.entityName\}`;[\s\S]*?\}[\s\S]*?if \(useInlineFilterActions\) \{[\s\S]*?addSectionBtn\.textContent = '\+ Add';[\s\S]*?deleteSectionBtn\.innerHTML = '<span class="btn-icon">🗑<\/span>Delete';/,
+    'Inline section actions should use the compact shared Add and Delete labels'
+  );
+});
+
+test('Tile Animation adjacent rules use terrain thumbnails and direction chips', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+  const match = text.match(/function renderAnimationAdjacentToEditor\(section, onValueChange\) \{[\s\S]*?\nfunction renderNaturalWonderAnimationSpecsEditor/);
+  assert.ok(match, 'Renderer should keep a dedicated Tile Animation adjacency editor');
+  const body = match[0];
+
+  assert.match(
+    body,
+    /makeSegmentedSingleValueEditor\(\s*terrainOpts[\s\S]*?includeEmpty:\s*false[\s\S]*?iconRenderer:\s*\(optionName\) => makeTerrainOptionPreviewIcon\(optionName\)/,
+    'Tile Animation adjacent terrain choices should use segmented chips with terrain thumbnails and no placeholder terrain chip'
+  );
+  assert.match(
+    body,
+    /makeSegmentedSingleValueEditor\(\s*dirOptions[\s\S]*?emptyLabel:\s*'\(any direction\)'[\s\S]*?showTokenIcon:\s*false/,
+    'Tile Animation adjacent direction choices should use segmented direction chips'
+  );
+  assert.doesNotMatch(
+    body,
+    /document\.createElement\('select'\)/,
+    'Tile Animation adjacency rules should not fall back to dropdown selectors'
+  );
+
+  const cssPath = path.join(__dirname, '..', 'src', 'styles.css');
+  const css = fs.readFileSync(cssPath, 'utf8');
+  assert.match(
+    css,
+    /\.animation-adjacent-rule-actions\s*>\s*button\s*\{[\s\S]*?width:\s*100%;[\s\S]*?\}/,
+    'Tile Animation adjacent Remove buttons should stretch to the full rule width'
+  );
+});
+
+test('section list item clicks preserve left-pane scroll during detail-only renders', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /renderSectionBody\(\{\s*skipListRebuild: true,\s*resetDetailScroll: !!options\.resetDetailScroll,\s*preserveListScroll: !!options\.preserveListScroll,/,
+    'Scheduled section selection renders should carry the list-scroll preservation flag'
+  );
+
+  assert.match(
+    text,
+    /itemBtn\.addEventListener\('click', \(\) => \{\s*selectSection\(sectionIndex, \{ preserveListScroll: true \}\);/,
+    'Direct section list clicks should preserve the current left-pane scroll'
+  );
+
+  assert.match(
+    text,
+    /if \(!skipListRebuild \|\| preserveListScroll\) listPane\.scrollTop = savedListTop;[\s\S]*?if \(skipListRebuild && preserveListScroll\) return;[\s\S]*?listPane\.scrollTo\(/,
+    'Preserved detail-only selection renders should restore list scroll and skip the active-item auto-scroll'
   );
 });
 
@@ -818,6 +1194,35 @@ test('BIQ reference tab count text uses filtered counts and countable unit rows'
     styles,
     /\.reference-count-text \{[\s\S]*?font-size: 0\.78rem;[\s\S]*?font-weight: 700;[\s\S]*?white-space: nowrap;[\s\S]*?\}/,
     'Reference count text should match tab-label scale and weight while staying compact'
+  );
+});
+
+test('unit_type_tags uses a structured unit picker editor and feeds unit consumers', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /function parseUnitTypeTagItems\(value\) \{[\s\S]*?parseDelimitedStructuredEntries\(value\)[\s\S]*?parseBracketedOptionTokens\(item\.slice\(i \+ 1\)\)/,
+    'Renderer should parse unit_type_tags as tag label plus whitespace-separated unit members'
+  );
+
+  assert.match(
+    text,
+    /if \(row\.key === 'unit_type_tags'\) \{[\s\S]*?makeNamedListTokenEditor\(\{[\s\S]*?tabKey: 'units'[\s\S]*?serializeUnitTypeTagItems\(api\.items\)/,
+    'unit_type_tags should render as tag cards with unit member pickers'
+  );
+
+  assert.match(
+    text,
+    /const tagOpts = getUnitTypeTagOptions\(\);[\s\S]*?label: 'Unit Type Tags'[\s\S]*?searchPlaceholder: 'Search Unit or Tag\.\.\.'/,
+    'unit_limits should offer unit type tag labels alongside unit names'
+  );
+
+  assert.match(
+    text,
+    /if \(String\(row && row\.key \|\| ''\)\.trim\(\) === 'unit_type_tags'\) \{[\s\S]*?'unit_limits'[\s\S]*?'counter_rules'[\s\S]*?remountBaseInputByKey\(dependentKey\)/,
+    'unit consumers should refresh after unsaved unit_type_tags edits'
   );
 });
 
@@ -1158,5 +1563,37 @@ test('Unit list panels render abilities and Available To as checkbox lists', () 
     styles,
     /\.unit-list-panel \.unit-checkbox-list[\s\S]*?overflow: auto;[\s\S]*?\.unit-list-panel \.unit-checkbox-row[\s\S]*?display: grid;/,
     'Unit checkbox lists should scroll inside the existing Units bottom-list panels'
+  );
+});
+
+test('Tile Animations keep section QA warnings out of the top summary', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /tabKey === 'animations' \? getLoadAuditGeneralEntries\(tabKey\) : getLoadAuditAllEntries\(tabKey\)/,
+    'Tile Animations should show section-level QA on the selected animation card rather than duplicating it in the top summary'
+  );
+});
+
+test('Files modal uses preview save plan for pending write status', () => {
+  const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
+  const text = fs.readFileSync(rendererPath, 'utf8');
+
+  assert.match(
+    text,
+    /state\.filesReadPreviewWritesLoaded && entry\.potentialWrite && !entry\.previewPlanWrite/,
+    'Files modal should not mark dirty-tab fallback entries as changed once the actual preview save plan is available'
+  );
+  assert.match(
+    text,
+    /Object\.values\(state\.filesReadPreviewWritesByPath \|\| \{\}\)\.forEach\(\(write\) => \{[\s\S]*?existing\.previewPlanWrite = true;[\s\S]*?tileanimationini/,
+    'Files modal should merge preview-plan writes, including Tile Animation INI sidecar repairs, into the tracked file list'
+  );
+  assert.match(
+    text,
+    /pendingAnimationIniMatchesConfigIni = fileType === 'animationIni'[\s\S]*?entry\.previewPlanWrite \|\| entry\.potentialWrite[\s\S]*?selectedTypes\.includes\('configIni'\)/,
+    'Pending Animation INI writes should remain visible under the default Config INI filter'
   );
 });

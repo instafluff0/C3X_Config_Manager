@@ -9,7 +9,7 @@ const log = require('./src/log');
 
 const APP_SETTINGS_FILE = 'settings.json';
 const APP_NAME = 'Civ 3 C3X Modern Editor';
-const SUPPORTED_C3X_RELEASE = 'R27';
+const SUPPORTED_C3X_RELEASE = 'R28';
 const DEV_APP_ICON_PATH = path.join(__dirname, 'build', 'icon.png');
 app.setName(APP_NAME);
 app.name = APP_NAME;

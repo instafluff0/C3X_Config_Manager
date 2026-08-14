@@ -1,3 +1,54 @@
+* RELEASE 28.0.0
+- Refreshed bundled C3X base defaults for the current R28 pre-release, added AI diplomacy and pollution spawn options, replaced retired unit group fields with `unit_type_tags`, and quarantined tile-destruction animation base keys behind R29.
+- Dedupe imported Wonder District and Natural Wonder PCX sheets by file contents so repeated imports share one scenario-local renamed copy.
+- Added Copy and scenario Import actions to Wonder Districts and Natural Wonders, including scenario-local PCX localization for imported section art.
+- Shortened R28 terrain visibility help text and kept terrain_visibility_bonus_can_stack adjacent to terrain_visibility_flat_bonus.
+- Hardened global search jumps into C3X Base fields so search navigation cannot blank the tab on render failure.
+- Kept R28 terrain visibility settings as separate searchable Base fields while preserving their terrain thumbnail array editors.
+- Simplified R28 counter-rule experience conditions to no-art dropdowns and defaulted enemy matches to Any.
+- Refined the R28 counter rules editor with a clearer vs. layout, bottom Remove action, structured terrain and district pickers, and English experience alias pickers.
+- Reworked the R28 counter rules editor into clearer Match, modifier, and optional-condition groups.
+- Changed the R28 pinned seasonal-cycle season field to an enum control and removed the duplicate wildcard row from counter-rule attacker pickers.
+- Added terrain thumbnails to the R28 terrain visibility array editors so terrain-specific values are easier to scan.
+- Expanded Base-tab help text for new R28 unit counter and alternate visibility settings so the UI carries the important guidance from the C3X default config.
+- Added R28 C3X base config support for pollution from free improvements, unit counters, alternate visibility logic, terrain visibility arrays, and unit visibility rules, including structured editors and QA checks.
+- Changed District import thumbnails to use representative District preview crops instead of shrinking full PCX sheets.
+- Normalized BIQ and C3X tab action button sizing for Add, Copy, Import, and Delete controls.
+- Refined the District import modal with the same searchable structured item picker used by BIQ imports.
+- Added Districts tab Copy and scenario Import actions, with imported district PCXs localized under unique scenario-safe names while reusing same-name byte-identical target files.
+- Fixed Tile Animation INI repair saves so unrelated scenario Civilopedia and PediaIcons cleanup is not previewed or staged as pending changes.
+- Fixed the Files modal for staged Tile Animation INI repairs so the pending INI appears with a diff preview and unchanged `scenario.tile_animations.txt` files are not shown as changed.
+- Added a bundled C3X base defaults schema so known keys, comments, grouping, and R28 fields appear in the UI even when the installed default config file is incomplete or older.
+- Added inline FLC previews and FLC Workshop buttons for District and Natural Wonder animation items.
+- Added Tile Animation INI quality checks with a staged repair action that writes canonical DEFAULT/ATTACK1-only INIs through the normal Save transaction.
+- Fixed District animation previews for INI files whose FLC values are relative to the `Art/Animations` root, such as Wind Farm.
+- Added an FLC Workshop button to Tile Animations that opens the selected animation's resolved FLC directly.
+- Fixed Unit Limits editing so newly edited unsaved `unit_type_tags` labels immediately appear in the Unit Limits picker.
+- Fixed Tile Animation and District/Natural Wonder animation previews so scenario-local `Art/Animations` INI/FLC files are checked before falling back to the C3X install.
+- Added current R28 C3X base config fields for unit type tags, invisible-unit detection distances, and Steal Plans duration, including structured unit-type tag editing and QA.
+- Quarantined base manifest coverage for tile destruction animation settings behind R29 pending C3X support.
+- Updated the default C3X feature-gate setting to R28 so R28-only UI such as Tile Animations is shown by default after loading settings.
+- Fixed the empty Tile Animations tab state so C3X installs without `default.tile_animations.txt` still render the editor shell instead of blanking the UI.
+- Fixed Tile Animations previews so they default to the southwest FLC direction and render at native pixel size inside a consistent preview frame.
+- Changed Tile Animations INI picking to store paths relative to `Art/Animations` and added animation list thumbnails from the middle preview frame with magenta stripped.
+- Added the destruction animation types from C3X tile animation configs, moved Frame Time directly under INI Path, and changed Animation Type to segmented controls.
+- Kept Tile Animations thumbnail loading lazy and lighter by decoding only one middle FLC frame per thumbnail with lower concurrent hydration.
+- Updated Natural Wonder animation editing to label multiple animation items, normalize INI paths relative to `Art/Animations`, and align INI, frame time, and offset controls more compactly.
+- Simplified Natural Wonder animation cards by removing redundant helper text and replacing the visual Day/Night Hours picker with a direct range/list input.
+- Made Natural Wonder animation direction independently editable, moved Day/Night Hours below Seasons, removed the extra-parameter UI, and matched the standard remove-button styling.
+- Fixed Undo for camelCase sectioned tabs such as Natural Wonders so animation edits use the fast scoped restore path, and grouped Tile Animation frame-time slider undo capture.
+- Refreshed Tile Animation previews when Direction changes and passed Natural Wonder animation Direction through to the FLC preview decoder.
+- Kept the Tile Animation FLC preview mounted while dragging Frame Time, matching Natural Wonder animation timing behavior.
+- Switched Tile Animations to the shared section Add/Delete action row used by Districts and Natural Wonders.
+- Preserved section-list scroll position when clicking between Tile Animation entries.
+- Added quality checks for Tile Animation and Natural Wonder animation Day/Night Hours syntax.
+- Restyled Tile Animation adjacency rules with terrain thumbnail chips and direction chips instead of dropdowns.
+- Fixed Tile Animation quality checks to accept decimal Frame Time values such as 0.14 seconds.
+- Added District animation item editing, preview, serialization, and quality checks for documented hours, seasons, cultures, eras, frame time, and offsets.
+- Fixed Add Animation in embedded animation editors so a blank card appears immediately, and corrected District animation preview rendering.
+- Added R28 District `type` editing and validation for `district` versus `tile-improvement` behavior.
+- Removed the placeholder Terrain chip from Tile Animation adjacency rules and stretched each rule's Remove button to full width.
+
 * RELEASE 27.22
 - Added a Units-tab FLC Workshop with legacy-compatible storyboard export/import, palette and FXM handling, Civ3 unit-FLC rebuild support, and civ-color-aware preview controls.
 - Fixed Units-tab FLC and sound browsing so valid unit animation and sound picks are stored relative to the unit animation folder instead of leaking absolute paths.
@@ -202,7 +253,7 @@
 - Kept contextual C3X controls editable in Standard Game on Civs, Improvements, Units, and Techs while BIQ fields remain read-only, so changes save through the active C3X config target.
 - Restyled C3X era alias matrices as bordered tables with transparent table-cell editing, while keeping the same structured alias editors and serialization.
 - Added contextual C3X unit-rule toggles to the Units tab for PTW artillery targeting, sea-only bombarders, unit-per-tile-limit exemptions, and water defensive retreat limits.
-- Audited C3X array-style base fields and tightened structured parsing so comma-delimited fields preserve newline-wrapped item bodies, while `show_tile_destruct_animation_after` now uses the token-list editor.
+- Audited C3X array-style base fields and tightened structured parsing so comma-delimited fields preserve newline-wrapped item bodies; `show_tile_destruct_animation_after` is now quarantined for R29.
 - Added contextual C3X era alias editors to the Civs tab so each civilization can edit its civ and leader aliases alongside its BIQ identity and leader fields.
 - Replaced the C3X `civ_aliases_by_era` editor with a civilization picker and era table that groups noun, adjective, and formal-name aliases while preserving raw unmatched/duplicate source entries.
 - Replaced the C3X `leader_aliases_by_era` editor with a leader picker and era table for replacement name, gender, and title aliases.

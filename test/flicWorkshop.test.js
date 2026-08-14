@@ -491,6 +491,13 @@ test('renderer exposes the Units-tab FLC Workshop entry point', () => {
   assert.match(renderer, /flcEdit\.innerHTML = '<span class="btn-icon">🎞<\/span>Edit'/);
   assert.match(renderer, /openFlicWorkshopForUnitAnimationModel\(activeModelForRow, row\.key\)/);
   assert.match(renderer, /openFlicWorkshopForUnitAnimationModel\(activeModel, String\(activeAction \|\| ui\.actionKey \|\| ''\)/);
+  assert.match(renderer, /function openFlicWorkshopForTileAnimationSection\(section\)/);
+  assert.match(renderer, /if \(tabKey === 'animations'\) \{[\s\S]*?className = 'ghost tile-animation-flic-workshop-btn'[\s\S]*?actionRow\.appendChild\(workshopBtn\);[\s\S]*?addSectionBtn\.textContent = '\+ Add';[\s\S]*?actionRow\.appendChild\(addSectionBtn\);[\s\S]*?const deleteSectionBtn = document\.createElement\('button'\);/);
+  assert.match(renderer, /openFlicWorkshopForTileAnimationSection\(section\)/);
+  assert.match(renderer, /async function openFlicWorkshopForSectionAnimation\(section, tabKey\)[\s\S]*?getFieldValuesRaw\(section, 'animation'\)[\s\S]*?actionRows: rows/);
+  assert.match(renderer, /if \(tabKey === 'districts' \|\| tabKey === 'naturalWonders'\) \{[\s\S]*?className = 'ghost section-animation-flic-workshop-btn'[\s\S]*?actionRow\.appendChild\(workshopBtn\);[\s\S]*?addSectionBtn\.textContent = '\+ Add'/);
+  assert.match(renderer, /openFlicWorkshopForSectionAnimation\(section, tabKey\)/);
+  assert.match(renderer, /kind: 'animationIni'[\s\S]*?maxFrames: 1,[\s\S]*?scenarioPath: state\.settings\.scenarioPath,[\s\S]*?scenarioPaths: getScenarioPreviewPaths\(\)/);
   assert.match(renderer, /openFlicWorkshopModal\(\{/);
   assert.match(renderer, /actionRows: rows/);
   assert.match(renderer, /flicWorkshopModal\.title\.textContent = 'FLC Workshop'/);

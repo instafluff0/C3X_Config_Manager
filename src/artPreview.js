@@ -300,22 +300,40 @@ function decodeFlcFrames(filePath, maxFrames = null, options = {}) {
   // Civ3 FlicAnimHeader at byte 88 (reserved3): num_anims at +8, anim_length at +10.
   const civ3NumAnims = b.length >= 98 ? u16(b, 96) : 0;
   const civ3AnimLength = b.length >= 100 ? u16(b, 98) : 0;
+  const requestedDirectionIndex = Number.isFinite(Number(options.directionIndex))
+    ? Math.trunc(Number(options.directionIndex))
+    : null;
   // Clamp directionIndex to available directions so single-direction FLCs still yield a frame.
-  const safeDir = (options.directionIndex > 0 && civ3NumAnims > 1)
-    ? Math.min(options.directionIndex, civ3NumAnims - 1)
+  const safeDir = (requestedDirectionIndex != null && requestedDirectionIndex > 0 && civ3NumAnims > 1)
+    ? Math.min(requestedDirectionIndex, civ3NumAnims - 1)
     : 0;
   // Each direction block = anim_length animation frames + 1 ring frame = (anim_length + 1) total.
   // Using anim_length alone undershoots by `safeDir` frames (one ring frame per skipped direction).
   const startFrame = (safeDir > 0 && civ3AnimLength > 0)
     ? (civ3AnimLength + 1) * safeDir
     : 0;
+  const requestedFrameOffset = (() => {
+    if (String(options.frameOffset || '').trim().toLowerCase() === 'middle' && civ3AnimLength > 0) {
+      return Math.max(0, Math.floor((civ3AnimLength - 1) / 2));
+    }
+    const raw = Number(options.frameOffset);
+    if (!Number.isFinite(raw) || raw <= 0 || civ3AnimLength <= 0) return 0;
+    return Math.max(0, Math.min(civ3AnimLength - 1, Math.trunc(raw)));
+  })();
+  const firstFrame = startFrame + requestedFrameOffset;
   // FLC (0xAF12) uses milliseconds; legacy FLI (0xAF11) uses 1/70s ticks.
   const speedField = (magic === 0xAF11)
     ? Math.round((speedRaw * 1000) / 70)
     : speedRaw;
-  const frameLimit = Number.isFinite(maxFrames) && maxFrames > 0
+  const directionFrameLimit = requestedDirectionIndex != null && civ3AnimLength > 0
+    ? Math.max(1, civ3AnimLength - requestedFrameOffset)
+    : null;
+  const explicitFrameLimit = Number.isFinite(maxFrames) && maxFrames > 0
     ? Math.floor(maxFrames)
-    : Math.max(1, Math.min(240, headerFrameCount + 1));
+    : null;
+  const frameLimit = explicitFrameLimit
+    ? (directionFrameLimit ? Math.min(explicitFrameLimit, directionFrameLimit) : explicitFrameLimit)
+    : (directionFrameLimit || Math.max(1, Math.min(240, headerFrameCount + 1)));
   const palette = new Uint8Array(256 * 3);
   for (let i = 0; i < 256; i += 1) {
     palette[i * 3] = i;
@@ -374,7 +392,7 @@ function decodeFlcFrames(filePath, maxFrames = null, options = {}) {
       }
 
       if (touched) {
-        if (frameIdx >= startFrame) {
+        if (frameIdx >= firstFrame) {
           frames.push(new Uint8Array(frame));
           if (frames.length >= frameLimit) {
             break;
@@ -444,7 +462,7 @@ function decodeFlcFrames(filePath, maxFrames = null, options = {}) {
     frameCountHeader: headerFrameCount,
     civ3NumAnims,
     civ3AnimLength,
-    debug: { chunkCounts, maxFramesRequested: frameLimit, framesDecoded: frames.length }
+    debug: { chunkCounts, maxFramesRequested: frameLimit, framesDecoded: frames.length, directionIndex: safeDir, startFrame: firstFrame }
   };
 }
 
@@ -474,15 +492,43 @@ function parseIniForFlc(iniPath) {
     const i = line.indexOf('=');
     if (i < 0) continue;
     const key = line.slice(0, i).trim().toUpperCase();
-    const val = line.slice(i + 1).trim();
+    const val = stripInlineIniComment(line.slice(i + 1)).replace(/^["']|["']$/g, '').trim();
     if (!val) continue;
     if (key === 'ATTACK1' || key === 'DEFAULT' || key === 'RUN' || key === 'WALK') {
       if (val.toLowerCase().endsWith('.flc')) {
-        return path.join(path.dirname(iniPath), val);
+        return resolveIniFlcValuePath(iniPath, val);
       }
     }
   }
   return null;
+}
+
+function findArtAnimationsRootForIni(iniPath) {
+  const dir = path.resolve(path.dirname(iniPath));
+  const parts = dir.split(path.sep);
+  for (let i = parts.length - 2; i >= 0; i -= 1) {
+    if (String(parts[i] || '').toLowerCase() !== 'art') continue;
+    if (String(parts[i + 1] || '').toLowerCase() !== 'animations') continue;
+    return parts.slice(0, i + 2).join(path.sep) || path.sep;
+  }
+  return '';
+}
+
+function resolveIniFlcValuePath(iniPath, value) {
+  const raw = String(value || '').trim().replace(/^["']|["']$/g, '');
+  if (!raw) return '';
+  const normalized = raw.replace(/\\/g, '/').replace(/\/+/g, '/');
+  const nativeRel = normalized.replace(/\//g, path.sep);
+  if (path.isAbsolute(nativeRel) || path.win32.isAbsolute(raw)) return nativeRel;
+  const siblingCandidate = path.join(path.dirname(iniPath), nativeRel);
+  if (fileExists(siblingCandidate)) return siblingCandidate;
+
+  const artAnimationsRoot = findArtAnimationsRootForIni(iniPath);
+  if (!artAnimationsRoot) return siblingCandidate;
+  const rootRelative = normalized.replace(/^\.?\/*Art\/Animations\//i, '').replace(/^\.?\/*/, '');
+  if (!rootRelative) return siblingCandidate;
+  const rootCandidate = path.join(artAnimationsRoot, rootRelative.replace(/\//g, path.sep));
+  return fileExists(rootCandidate) ? rootCandidate : siblingCandidate;
 }
 
 function readIniText(iniPath) {
@@ -561,7 +607,7 @@ function parseUnitAnimationIni(iniPath) {
     if (seen.has(keyUpper)) return;
     if (!val) return;
     if (!/\.flc$/i.test(val)) return;
-    const flcPath = path.join(path.dirname(iniPath), val.replace(/\\/g, path.sep).replace(/\//g, path.sep));
+    const flcPath = resolveIniFlcValuePath(iniPath, val);
     actions.push({
       key: keyUpper,
       relativePath: val,
@@ -577,6 +623,14 @@ function parseUnitAnimationIni(iniPath) {
   if (!actions.length) {
     return {
       iniPath,
+      sections: sections.map((sec) => ({
+        name: sec.name,
+        fields: (Array.isArray(sec.fields) ? sec.fields : []).map((field) => ({
+          key: String(field && field.key || ''),
+          keyUpper: String(field && field.keyUpper || '').toUpperCase(),
+          value: String(field && field.value || '')
+        }))
+      })),
       actions: [],
       defaultActionKey: ''
     };
@@ -1028,6 +1082,50 @@ function resolveUnitIniPath(civ3Path, animationName, scenarioPath, scenarioPaths
   return chosen;
 }
 
+function withIniExtensionCandidates(filePath) {
+  const value = String(filePath || '').trim();
+  if (!value) return [];
+  if (/\.ini$/i.test(value)) return [value];
+  return [value, `${value}.ini`, `${value}.INI`];
+}
+
+function resolveAnimationIniPath(c3xPath, iniPath, scenarioPath, scenarioPaths) {
+  const raw = String(iniPath || '').trim().replace(/^["']|["']$/g, '');
+  if (!raw) return null;
+  const slashPath = raw.replace(/\\/g, '/').replace(/\/+/g, '/');
+  const relativePath = slashPath.replace(/^\.?\/*Art\/Animations\//i, '').replace(/^\.?\/*/, '');
+  const nativeRelative = relativePath.replace(/\//g, path.sep);
+  const nativeRaw = slashPath.replace(/\//g, path.sep);
+  const candidates = [];
+  const addCandidate = (candidate) => {
+    withIniExtensionCandidates(candidate).forEach((p) => {
+      if (p && !candidates.includes(p)) candidates.push(p);
+    });
+  };
+
+  if (path.isAbsolute(nativeRaw) || path.win32.isAbsolute(raw)) {
+    addCandidate(nativeRaw);
+  } else {
+    normalizeScenarioRoots(scenarioPath, scenarioPaths).forEach((root) => {
+      addCandidate(path.join(root, 'Art', 'Animations', nativeRelative));
+    });
+    if (c3xPath) addCandidate(path.join(c3xPath, 'Art', 'Animations', nativeRelative));
+  }
+
+  const existing = candidates.filter((p) => fileExists(p));
+  if (existing.length === 0) {
+    log.debug('resolveAnimationIni', `NOT FOUND: "${iniPath}" — checked ${candidates.length} candidate(s)`);
+    return null;
+  }
+  const withResolvableFlc = existing.find((candidate) => {
+    const flcPath = parseIniForFlc(candidate);
+    return !!flcPath && fileExists(flcPath);
+  });
+  const chosen = withResolvableFlc || existing[0];
+  log.debug('resolveAnimationIni', `Resolved "${iniPath}" -> ${log.rel(chosen)}${withResolvableFlc ? '' : ' (no FLC found, using first match)'}`);
+  return chosen;
+}
+
 function resolvePcxPath(c3xPath, fileName, scenarioRoots) {
   if (!c3xPath || !fileName) return null;
   const normalizedFileName = String(fileName || '').trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/');
@@ -1186,16 +1284,23 @@ function getPreview(request) {
   }
 
   if (kind === 'animationIni') {
-    const iniRel = String(request.iniPath || '').replace(/\\/g, path.sep).replace(/\//g, path.sep);
-    const iniAbs = path.isAbsolute(iniRel)
-      ? iniRel
-      : path.join(c3xPath, 'Art', 'Animations', iniRel);
+    const iniAbs = resolveAnimationIniPath(c3xPath, request.iniPath, scenarioPath, scenarioPaths);
     const flc = parseIniForFlc(iniAbs);
     if (!flc || !fileExists(flc)) {
       log.warn('getPreview', `animationIni: FLC not found for INI ${log.rel(iniAbs)}`);
       return { ok: false, error: 'FLC from INI not found' };
     }
-    return { ok: true, ...decodeByPath(flc) };
+    const directionIndex = Number.isFinite(Number(request.directionIndex))
+      ? Math.trunc(Number(request.directionIndex))
+      : null;
+    const options = directionIndex == null ? {} : { directionIndex };
+    if (Number.isFinite(Number(request.maxFrames)) && Number(request.maxFrames) > 0) {
+      options.maxFrames = Math.floor(Number(request.maxFrames));
+    }
+    if (String(request.frameOffset || '').trim()) {
+      options.frameOffset = String(request.frameOffset || '').trim();
+    }
+    return { ok: true, ...decodeByPath(flc, null, options) };
   }
 
   if (kind === 'naturalWonderAnimationSpec') {
@@ -1773,6 +1878,7 @@ module.exports = {
   parseUnitAnimationIni,
   parseCiv3AmbFile,
   resolveConquestsAssetPath,
+  resolveAnimationIniPath,
   resolveUnitIniPath,
   resolvePcxPath,
   decodePcx,

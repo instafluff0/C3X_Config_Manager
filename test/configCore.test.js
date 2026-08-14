@@ -22,6 +22,7 @@ const {
   loadBundle,
   saveBundle,
   previewSavePlan,
+  prepareImportedDistrictArtWrites,
   collectUnitRuntimeDependencyCopiesForImportedAnimation
 } = require('../src/configCore');
 
@@ -109,6 +110,240 @@ test('base config precedence is default -> scenario -> custom', () => {
   assert.equal(model.effectiveMap.b, '20');
   assert.equal(model.effectiveMap.c, '300');
   assert.deepEqual(model.sourceOrder, ['default', 'scenario', 'custom']);
+});
+
+test('buildBaseModel includes R28 UI defaults missing from installed default config', () => {
+  const model = buildBaseModel('enable_districts = true\n', '', '', 'global', '');
+  const byKey = new Map(model.rows.map((row) => [row.key, row]));
+
+  assert.equal(byKey.get('radar_tower_detection_distance').value, '0');
+  assert.equal(byKey.get('outpost_detection_distance').value, '0');
+  assert.equal(byKey.get('steal_plans_duration').value, '1');
+  assert.equal(byKey.get('diplo_demand_rate_between_ai_players').value, '0');
+  assert.equal(byKey.get('limit_ai_to_one_demand_per_turn').value, 'false');
+  assert.equal(byKey.get('show_ai_demand_info_popup').value, 'false');
+  assert.equal(byKey.get('remove_human_player_bias_from_ai_war_planning').value, 'false');
+  assert.equal(byKey.get('unit_type_tags').value, '[]');
+  assert.equal(byKey.get('pollution_spawn_effect').value, 'standard');
+  assert.equal(byKey.get('enable_unit_counters').value, 'false');
+  assert.equal(byKey.get('counter_rules').value, '[]');
+  assert.equal(byKey.get('base_visibility_range').value, '1');
+  assert.equal(byKey.get('unit_visibility_rules').value, '[Sea: 2 when-fortified-same-continent]');
+  assert.equal(model.defaultMap.radar_tower_detection_distance, '0');
+  assert.ok(model.commentsByKey.radar_tower_detection_distance.some((line) => /radar towers and outposts/i.test(line)));
+});
+
+test('prepareImportedDistrictArtWrites reuses same-name byte-identical target PCX', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  const data = Buffer.from([0x0a, 0x0b, 0x0c, 0x0d]);
+  fs.writeFileSync(path.join(sourceArt, 'Depot.pcx'), data);
+  fs.writeFileSync(path.join(targetArt, 'Depot.pcx'), data);
+  const imported = {
+    marker: '#District',
+    fields: [
+      { key: 'name', value: 'Depot' },
+      { key: 'img_paths', value: 'Depot.pcx' }
+    ],
+    _pendingDistrictImport: {
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { districts: { model: { sections: [imported] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 0);
+  assert.equal(imported.fields.find((field) => field.key === 'img_paths').value, 'Depot.pcx');
+});
+
+test('prepareImportedDistrictArtWrites gives imported PCX a unique name before overwriting a different target file', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  fs.writeFileSync(path.join(sourceArt, 'Depot.pcx'), Buffer.from([0x01, 0x02, 0x03]));
+  fs.writeFileSync(path.join(targetArt, 'Depot.pcx'), Buffer.from([0x09, 0x08, 0x07]));
+  const imported = {
+    marker: '#District',
+    fields: [
+      { key: 'name', value: 'Depot' },
+      { key: 'img_paths', value: 'Depot.pcx' }
+    ],
+    _pendingDistrictImport: {
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { districts: { model: { sections: [imported] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 1);
+  assert.equal(path.basename(result.writes[0].path), 'Depot_2.pcx');
+  assert.equal(imported.fields.find((field) => field.key === 'img_paths').value, 'Depot_2.pcx');
+  assert.equal(fs.readFileSync(path.join(targetArt, 'Depot.pcx')).toString('hex'), '090807');
+});
+
+test('prepareImportedDistrictArtWrites localizes imported wonder district img_path', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  fs.writeFileSync(path.join(sourceArt, 'WonderDistrict.pcx'), Buffer.from([0xaa, 0xbb, 0xcc]));
+  fs.writeFileSync(path.join(targetArt, 'WonderDistrict.pcx'), Buffer.from([0x01, 0x02, 0x03]));
+  const imported = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Great Library' },
+      { key: 'img_path', value: 'WonderDistrict.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'wonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { wonders: { model: { sections: [imported] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 1);
+  assert.equal(path.basename(result.writes[0].path), 'WonderDistrict_2.pcx');
+  assert.equal(imported.fields.find((field) => field.key === 'img_path').value, 'WonderDistrict_2.pcx');
+});
+
+test('prepareImportedDistrictArtWrites reuses existing natural wonder target PCX when source bytes match', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  const data = Buffer.from([0x10, 0x20, 0x30]);
+  fs.writeFileSync(path.join(sourceArt, 'Falls.pcx'), data);
+  fs.writeFileSync(path.join(targetArt, 'Falls.pcx'), data);
+  const imported = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Falls' },
+      { key: 'img_path', value: 'Falls.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'naturalWonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { naturalWonders: { model: { sections: [imported] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 0);
+  assert.equal(imported.fields.find((field) => field.key === 'img_path').value, 'Falls.pcx');
+});
+
+test('prepareImportedDistrictArtWrites reuses one renamed copy for repeated imports of the same source PCX', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  const sourceData = Buffer.from([0x40, 0x50, 0x60]);
+  fs.writeFileSync(path.join(sourceArt, 'NaturalWonders.pcx'), sourceData);
+  fs.writeFileSync(path.join(targetArt, 'NaturalWonders.pcx'), Buffer.from([0x99, 0x88, 0x77]));
+  const first = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Falls' },
+      { key: 'img_path', value: 'NaturalWonders.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'naturalWonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const second = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Crater' },
+      { key: 'img_path', value: 'NaturalWonders.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'naturalWonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { naturalWonders: { model: { sections: [first, second] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 1);
+  assert.equal(path.basename(result.writes[0].path), 'NaturalWonders_2.pcx');
+  assert.equal(first.fields.find((field) => field.key === 'img_path').value, 'NaturalWonders_2.pcx');
+  assert.equal(second.fields.find((field) => field.key === 'img_path').value, 'NaturalWonders_2.pcx');
+});
+
+test('loadBundle uses bundled C3X base docs when installed default config is incomplete', () => {
+  const root = mkTmpDir();
+  fs.writeFileSync(path.join(root, 'default.c3x_config.ini'), 'enable_districts = true\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_config.txt'), '#District\nname = Base\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_wonders_config.txt'), '#Wonder\nname = W\nimg_row = 0\nimg_column = 0\nimg_construct_row = 0\nimg_construct_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_natural_wonders_config.txt'), '#Wonder\nname = N\nterrain_type = grassland\nimg_row = 0\nimg_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.tile_animations.txt'), '; empty\n', 'utf8');
+
+  const bundle = loadBundle({ mode: 'global', c3xPath: root, scenarioPath: '' });
+  const row = bundle.tabs.base.rows.find((candidate) => candidate.key === 'steal_plans_duration');
+
+  assert.equal(row.value, '1');
+  assert.match(bundle.tabs.base.fieldDocs.steal_plans_duration, /Steal Plans/i);
+  assert.match(bundle.tabs.base.fieldDocs.unit_type_tags, /named group/i);
+  assert.match(bundle.tabs.base.fieldDocs.pollution_spawn_effect, /reduce-population/i);
+  assert.match(bundle.tabs.base.fieldDocs.terrain_visibility_see_height, /Height a unit is considered/i);
+  assert.doesNotMatch(bundle.tabs.base.fieldDocs.terrain_visibility_see_height, /Entries are ordered as/i);
+  assert.match(bundle.tabs.base.fieldDocs.terrain_visibility_seen_height, /occlude tiles beyond/i);
+  assert.match(bundle.tabs.base.fieldDocs.unit_visibility_rules, /last rule matching a unit is used/i);
+  const baseKeys = bundle.tabs.base.rows.map((candidate) => candidate.key);
+  assert.ok(
+    baseKeys.indexOf('terrain_visibility_flat_bonus') >= 0,
+    'terrain_visibility_flat_bonus should load from bundled defaults'
+  );
+  assert.equal(
+    baseKeys.indexOf('terrain_visibility_flat_bonus'),
+    baseKeys.indexOf('terrain_visibility_bonus_can_stack') + 1,
+    'terrain_visibility_flat_bonus should appear directly after terrain_visibility_bonus_can_stack'
+  );
 });
 
 test('sectioned config parsing round-trips marker blocks', () => {
@@ -348,6 +583,114 @@ test('loadBundle + saveBundle writes to scope targets', () => {
   assert.equal(fs.existsSync(customPath), true);
   const savedText = fs.readFileSync(customPath, 'utf8');
   assert.match(savedText, /flag = false/);
+});
+
+test('saveBundle writes staged Tile Animation INI repairs to scenario Art/Animations', () => {
+  const root = mkTmpDir();
+  const scenario = mkTmpDir();
+  fs.writeFileSync(path.join(root, 'default.c3x_config.ini'), 'flag = true\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_config.txt'), '#District\nname = Base\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_wonders_config.txt'), '#Wonder\nname = W\nimg_row = 0\nimg_column = 0\nimg_construct_row = 0\nimg_construct_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_natural_wonders_config.txt'), '#Wonder\nname = N\nterrain_type = grassland\nimg_row = 0\nimg_column = 0\n', 'utf8');
+  const animationsText = serializeSectionedConfig({
+    sections: [
+      {
+        marker: '#Animation',
+        comments: [],
+        fields: [
+          { key: 'name', value: 'Cow' },
+          { key: 'ini_path', value: 'Resources\\Cow\\Cow.INI' },
+          { key: 'type', value: 'resource' }
+        ]
+      }
+    ]
+  }, '#Animation', { kind: 'animations', mode: 'scenario', includeComments: false, includeManagedHeader: false });
+  fs.writeFileSync(path.join(root, 'default.tile_animations.txt'), animationsText, 'utf8');
+  fs.writeFileSync(path.join(scenario, 'scenario.tile_animations.txt'), animationsText, 'utf8');
+  const scenarioTextDir = path.join(scenario, 'Text');
+  fs.mkdirSync(scenarioTextDir, { recursive: true });
+  const pediaIconsText = '#ICON_PRTO_TEST\nart\\civilopedia\\icons\\units\\test.pcx\n';
+  const civilopediaText = '#PRTO_TEST\nTest unit\n#DESC_PRTO_TEST\nTest unit details\n#EOF\n';
+  fs.writeFileSync(path.join(scenarioTextDir, 'PediaIcons.txt'), pediaIconsText, 'latin1');
+  fs.writeFileSync(path.join(scenarioTextDir, 'Civilopedia.txt'), civilopediaText, 'latin1');
+  const sourceDir = path.join(root, 'Art', 'Animations', 'Resources', 'Cow');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'Cow.INI'), [
+    '[Speed]',
+    'Normal Speed=225',
+    'Fast Speed=225',
+    '',
+    '[Animations]',
+    'DEFAULT=cow.flc',
+    'RUN=cow.flc',
+    '',
+    '[Timing]',
+    'DEFAULT=0.170000',
+    ''
+  ].join('\r\n'), 'latin1');
+  const bundle = loadBundle({ mode: 'scenario', c3xPath: root, scenarioPath: scenario });
+  const section = bundle.tabs.animations.model.sections[0];
+  section.pendingTileAnimationIniRepair = {
+    iniPath: 'Resources\\Cow\\Cow.INI',
+    sourcePath: path.join(sourceDir, 'Cow.INI'),
+    flcFileName: 'cow.flc'
+  };
+  const preview = previewSavePlan({
+    mode: 'scenario',
+    c3xPath: root,
+    scenarioPath: scenario,
+    dirtyTabs: ['animations'],
+    tabs: bundle.tabs
+  });
+
+  assert.equal(preview.ok, true);
+  assert.equal(preview.writes.some((write) => write.kind === 'animations'), false);
+  assert.ok(preview.writes.some((write) => write.kind === 'tileAnimationIni'));
+  assert.equal(preview.writes.some((write) => write.kind === 'pediaIcons'), false);
+  assert.equal(preview.writes.some((write) => write.kind === 'civilopedia'), false);
+
+  const saveResult = saveBundle({
+    mode: 'scenario',
+    c3xPath: root,
+    scenarioPath: scenario,
+    dirtyTabs: ['animations'],
+    tabs: bundle.tabs
+  });
+
+  assert.equal(saveResult.ok, true);
+  const targetPath = path.join(scenario, 'Art', 'Animations', 'Resources', 'Cow', 'Cow.INI');
+  const saved = fs.readFileSync(targetPath, 'latin1');
+  assert.match(saved, /\[Animations\]\r?\nBLANK=\r?\nDEFAULT=cow\.flc\r?\nWALK=\r?\nRUN=\r?\nATTACK1=cow\.flc/);
+  assert.match(saved, /\[Timing\]\r?\nDEFAULT=0\.170000/);
+  assert.match(saved, /\[Sound Effects\]\r?\nBLANK=\r?\nDEFAULT=\r?\nWALK=/);
+  assert.match(saved, /\[Version\]\r?\nVERSION=1/);
+  assert.match(saved, /\[Palette\]\r?\nPALETTE=/);
+  assert.equal(fs.readFileSync(path.join(scenarioTextDir, 'PediaIcons.txt'), 'latin1'), pediaIconsText);
+  assert.equal(fs.readFileSync(path.join(scenarioTextDir, 'Civilopedia.txt'), 'latin1'), civilopediaText);
+});
+
+test('saveBundle rejects staged Tile Animation INI repairs in Standard Game mode', () => {
+  const root = mkTmpDir();
+  fs.writeFileSync(path.join(root, 'default.c3x_config.ini'), 'flag = true\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_config.txt'), '#District\nname = Base\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_wonders_config.txt'), '#Wonder\nname = W\nimg_row = 0\nimg_column = 0\nimg_construct_row = 0\nimg_construct_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_natural_wonders_config.txt'), '#Wonder\nname = N\nterrain_type = grassland\nimg_row = 0\nimg_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.tile_animations.txt'), '#Animation\nname = Cow\nini_path = Resources\\Cow\\Cow.INI\ntype = resource\n', 'utf8');
+  const bundle = loadBundle({ mode: 'global', c3xPath: root, scenarioPath: '' });
+  bundle.tabs.animations.model.sections[0].pendingTileAnimationIniRepair = {
+    iniPath: 'Resources\\Cow\\Cow.INI',
+    flcFileName: 'cow.flc'
+  };
+
+  const saveResult = saveBundle({
+    mode: 'global',
+    c3xPath: root,
+    dirtyTabs: ['animations'],
+    tabs: bundle.tabs
+  });
+
+  assert.equal(saveResult.ok, false);
+  assert.match(saveResult.error, /Scenario mode/i);
 });
 
 test('scenario unit import collects direct INI runtime dependencies from sibling unit folders', () => {

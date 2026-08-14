@@ -7,7 +7,7 @@ const {
   parsePediaIconsDocumentWithOrder,
   readTextFileWithEncodingInfoIfExists
 } = require('./configCore');
-const { parseUnitAnimationIni, resolveConquestsAssetPath, resolvePcxPath } = require('./artPreview');
+const { parseUnitAnimationIni, resolveAnimationIniPath, resolveConquestsAssetPath, resolvePcxPath } = require('./artPreview');
 const C3X_BASE_MANIFEST = require('./c3xBaseManifest');
 
 const DISTRICT_TRAIT_OPTIONS = [
@@ -34,6 +34,14 @@ const UNIT_ANIMATION_RUNTIME_KEYS = new Set([
   'FORTIFY', 'FORTIFYHOLD', 'FIDGET', 'VICTORY', 'TURNLEFT', 'TURNRIGHT', 'BUILD', 'ROAD', 'MINE',
   'IRRIGATE', 'FORTRESS', 'CAPTURE'
 ]);
+
+const TILE_ANIMATION_INI_ANIMATION_KEYS = [
+  'BLANK', 'DEFAULT', 'WALK', 'RUN', 'ATTACK1', 'ATTACK2', 'ATTACK3', 'DEFEND', 'DEATH', 'DEAD',
+  'FORTIFY', 'FORTIFYHOLD', 'FIDGET', 'VICTORY', 'TURNLEFT', 'TURNRIGHT', 'BUILD', 'ROAD', 'MINE',
+  'IRRIGATE', 'FORTRESS', 'CAPTURE', 'STOP_AT_LAST_FRAME', 'PauseROAD', 'PauseMINE', 'PauseIRRIGATE'
+];
+
+const TILE_ANIMATION_INI_REQUIRED_KEYS = new Set(['DEFAULT', 'ATTACK1']);
 
 const DISTRICT_DEPENDENCY_RULES = [
   { key: 'advance_prereqs', label: 'Tech Prerequisites', setKey: 'technologies' },
@@ -157,6 +165,31 @@ const DIRECTION_OPTIONS = [
   'east'
 ];
 
+const ANIMATION_TYPE_OPTIONS = ['terrain', 'resource', 'pcx', 'destruct-initial', 'destruct-after', 'coastal-wave'];
+const SEASON_OPTIONS = ['spring', 'summer', 'fall', 'winter'];
+const DISTRICT_ANIMATION_CULTURE_OPTIONS = ['AMER', 'EURO', 'ROMAN', 'MIDEAST', 'ASIAN'];
+const DISTRICT_ANIMATION_ERA_OPTIONS = ['ancient', 'middle', 'industrial', 'modern', '0', '1', '2', '3'];
+
+const NATURAL_WONDER_ANIMATION_SPEC_ALIASES = new Map([
+  ['ini', 'ini'],
+  ['ini_path', 'ini'],
+  ['frame_time_seconds', 'frame_time_seconds'],
+  ['frame_time', 'frame_time_seconds'],
+  ['x_offset', 'x_offset'],
+  ['y_offset', 'y_offset'],
+  ['offsets', 'offsets'],
+  ['direction', 'direction'],
+  ['hours', 'show_in_day_night_hours'],
+  ['show_in_day_night_hours', 'show_in_day_night_hours'],
+  ['day_night_hours', 'show_in_day_night_hours'],
+  ['show_in_seasons', 'show_in_seasons'],
+  ['seasons', 'show_in_seasons'],
+  ['cultures', 'show_in_cultures'],
+  ['show_in_cultures', 'show_in_cultures'],
+  ['eras', 'show_in_eras'],
+  ['show_in_eras', 'show_in_eras']
+]);
+
 const DISTRICT_BUILDABLE_SQUARE_TOKENS = [
   'desert', 'deserts',
   'plain', 'plains',
@@ -188,6 +221,25 @@ const DISTRICT_ADJACENT_SQUARE_TOKENS = [
   ...DISTRICT_BUILDABLE_SQUARE_TOKENS,
   'city'
 ];
+
+const COUNTER_RULE_TERRAIN_TOKENS = [
+  ...DISTRICT_BUILDABLE_SQUARE_TOKENS,
+  'forest', 'forests',
+  'jungle', 'jungles',
+  'marsh', 'marshes'
+];
+
+const C3X_COUNTER_EFFECT_TOKENS = [
+  'self-atk',
+  'self-def',
+  'enemy-atk',
+  'enemy-def',
+  'self-bombard',
+  'enemy-bombard'
+];
+
+const C3X_VISIBILITY_ARRAY_LENGTH = 14;
+const C3X_UNIT_VISIBILITY_CLASSES = ['land', 'sea', 'air'];
 
 const NATURAL_WONDER_ADJACENT_TOKENS = [
   'any',
@@ -261,10 +313,12 @@ const SECTION_LINT_SPECS = {
       ['img_paths', { type: 'list' }],
       ['img_column_count', { type: 'number' }],
       ['render_strategy', { type: 'select', options: ['by-count', 'by-building'] }],
+      ['type', { type: 'select', options: ['district', 'tile-improvement'] }],
       ['custom_width', { type: 'number' }],
       ['custom_height', { type: 'number' }],
       ['x_offset', { type: 'number' }],
       ['y_offset', { type: 'number' }],
+      ['animation', { type: 'text' }],
       ['btn_tile_sheet_row', { type: 'number' }],
       ['btn_tile_sheet_column', { type: 'number' }],
       ['advance_prereqs', { type: 'list' }],
@@ -356,6 +410,25 @@ const SECTION_LINT_SPECS = {
       ['Impassable', { type: 'bool' }],
       ['Impassable_to_wheeled', { type: 'bool' }],
       ['animation', { type: 'text' }]
+    ])
+  },
+  animations: {
+    label: 'Tile Animation',
+    knownFields: new Map([
+      ['name', { type: 'text' }],
+      ['ini_path', { type: 'text' }],
+      ['frame_time_seconds', { type: 'decimal' }],
+      ['type', { type: 'select', options: ANIMATION_TYPE_OPTIONS }],
+      ['resource_type', { type: 'text' }],
+      ['pcx_file', { type: 'text' }],
+      ['pcx_index', { type: 'number' }],
+      ['terrain_types', { type: 'list', acceptedOptions: DISTRICT_BUILDABLE_SQUARE_TOKENS }],
+      ['adjacent_to', { type: 'list', acceptedOptions: DISTRICT_ADJACENT_SQUARE_TOKENS }],
+      ['direction', { type: 'select', options: DIRECTION_OPTIONS }],
+      ['x_offset', { type: 'number' }],
+      ['y_offset', { type: 'number' }],
+      ['show_in_day_night_hours', { type: 'day-night-hours' }],
+      ['show_in_seasons', { type: 'list', acceptedOptions: SEASON_OPTIONS }]
     ])
   }
 };
@@ -449,6 +522,13 @@ function isIntegerToken(value) {
   return /^-?\d+$/.test(String(value == null ? '' : value).trim());
 }
 
+function isDecimalNumberToken(value) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return false;
+  if (!/^-?(?:\d+|\d*\.\d+)$/.test(raw)) return false;
+  return Number.isFinite(Number(raw));
+}
+
 function normalizeReferenceLookup(value) {
   return normalizeConfigToken(value).toLowerCase();
 }
@@ -460,6 +540,67 @@ function hasBalancedQuotes(value) {
     if (src[i] === '"') inQuotes = !inQuotes;
   }
   return !inQuotes;
+}
+
+function validateDayNightHoursSyntax(value) {
+  const raw = normalizeConfigToken(value);
+  if (!raw) return '';
+  const parts = raw.split(',');
+  if (parts.some((part) => String(part || '').trim() === '')) {
+    return `invalid day/night hour syntax "${raw}". Use comma-separated hours or ranges like "7-17, 22".`;
+  }
+  for (const part of parts) {
+    const token = String(part || '').trim();
+    const match = token.match(/^(\d{1,2})(?:\s*-\s*(\d{1,2}))?$/);
+    if (!match) {
+      return `invalid day/night hour syntax "${raw}". Use comma-separated hours or ranges like "7-17, 22".`;
+    }
+    const start = Number.parseInt(match[1], 10);
+    const end = typeof match[2] === 'string' ? Number.parseInt(match[2], 10) : start;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > 23 || end < 0 || end > 23) {
+      return `day/night hours must be between 0 and 23 in "${raw}".`;
+    }
+  }
+  return '';
+}
+
+function parseNaturalWonderAnimationSpec(spec) {
+  const parsed = {
+    ini: '',
+    frame_time_seconds: '',
+    x_offset: '',
+    y_offset: '',
+    direction: '',
+    show_in_day_night_hours: '',
+    show_in_seasons: '',
+    show_in_cultures: '',
+    show_in_eras: ''
+  };
+  String(spec || '')
+    .split(';')
+    .map((chunk) => String(chunk || '').trim())
+    .filter(Boolean)
+    .forEach((chunk) => {
+      const match = chunk.match(/^([^:=]+)\s*[:=]\s*(.*)$/);
+      const rawKey = match ? String(match[1] || '').trim() : '';
+      const rawValue = match ? String(match[2] || '').trim() : String(chunk || '').trim();
+      const knownKey = NATURAL_WONDER_ANIMATION_SPEC_ALIASES.get(normalizeConfigToken(rawKey).toLowerCase());
+      const value = rawValue.replace(/^"(.*)"$/, '$1').trim();
+      if (knownKey === 'offsets') {
+        const offsetMatch = value.match(/^\s*(-?\d+)\s*,\s*(-?\d+)\s*$/);
+        if (offsetMatch) {
+          parsed.x_offset = offsetMatch[1];
+          parsed.y_offset = offsetMatch[2];
+        }
+        return;
+      }
+      if (knownKey) {
+        parsed[knownKey] = value;
+        return;
+      }
+      if (!match && !parsed.ini) parsed.ini = value;
+    });
+  return parsed;
 }
 
 function getFieldValue(section, key) {
@@ -1138,6 +1279,140 @@ function parseNameAmountItems(value) {
   });
 }
 
+function parseUnitTypeTagItems(value) {
+  return parseDelimitedStructuredEntries(value).map((item) => {
+    const i = item.indexOf(':');
+    if (i < 0) return { name: normalizeConfigToken(item), units: [] };
+    return {
+      name: normalizeConfigToken(item.slice(0, i)),
+      units: parseBracketedOptionTokens(item.slice(i + 1))
+    };
+  });
+}
+
+function tokenizeCounterRuleEntry(entry) {
+  return tokenizeWhitespaceListPreservingQuotes(entry)
+    .map((token) => normalizeConfigToken(token))
+    .filter(Boolean);
+}
+
+function isCounterRuleOptionToken(token) {
+  return token === 'in-city'
+    || token === 'ignore-defensive-bonuses'
+    || token === 'terrain'
+    || token === 'district'
+    || token === 'self-exp'
+    || token === 'enemy-exp'
+    || C3X_COUNTER_EFFECT_TOKENS.includes(token);
+}
+
+function parseCounterRuleItems(value) {
+  return parseDelimitedStructuredEntries(value).map((entry) => {
+    const tokens = tokenizeCounterRuleEntry(entry);
+    const rule = {
+      raw: entry,
+      attacker: tokens[0] || '',
+      defender: tokens[2] || '',
+      validSyntax: tokens.length >= 3 && tokens[1] === 'vs',
+      terrain: '',
+      district: '',
+      selfExp: [],
+      enemyExp: [],
+      effects: []
+    };
+    if (!rule.validSyntax) return rule;
+    let i = 3;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      if (C3X_COUNTER_EFFECT_TOKENS.includes(token)) {
+        const valueToken = tokens[i + 1] || '';
+        if (!isIntegerToken(valueToken)) rule.validSyntax = false;
+        rule.effects.push({ token, value: valueToken });
+        i += 2;
+        continue;
+      }
+      if (token === 'in-city' || token === 'ignore-defensive-bonuses') {
+        i += 1;
+        continue;
+      }
+      if (token === 'terrain') {
+        rule.terrain = tokens[i + 1] || '';
+        if (!rule.terrain) rule.validSyntax = false;
+        i += 2;
+        continue;
+      }
+      if (token === 'district') {
+        rule.district = tokens[i + 1] || '';
+        if (!rule.district) rule.validSyntax = false;
+        i += 2;
+        continue;
+      }
+      if (token === 'self-exp' || token === 'enemy-exp') {
+        const values = [];
+        i += 1;
+        while (i < tokens.length && !isCounterRuleOptionToken(tokens[i])) {
+          values.push(tokens[i]);
+          i += 1;
+        }
+        if (values.length <= 0) rule.validSyntax = false;
+        if (token === 'self-exp') rule.selfExp = values;
+        else rule.enemyExp = values;
+        continue;
+      }
+      rule.validSyntax = false;
+      break;
+    }
+    return rule;
+  });
+}
+
+function parseFixedVisibilityArray(value, kind) {
+  const tokens = parseBracketedOptionTokens(value);
+  if (tokens.length !== C3X_VISIBILITY_ARRAY_LENGTH) {
+    return { ok: false, values: tokens, error: `expected ${C3X_VISIBILITY_ARRAY_LENGTH} entries` };
+  }
+  if (kind === 'boolean') {
+    const invalid = tokens.filter((token) => !isConfigBoolToken(token));
+    return { ok: invalid.length === 0, values: tokens, error: invalid.length > 0 ? `invalid boolean entries: ${invalid.join(', ')}` : '' };
+  }
+  const invalid = tokens.filter((token) => !isIntegerToken(token));
+  return { ok: invalid.length === 0, values: tokens, error: invalid.length > 0 ? `invalid integer entries: ${invalid.join(', ')}` : '' };
+}
+
+function parseUnitVisibilityRuleItems(value) {
+  return parseDelimitedStructuredEntries(value).map((entry) => {
+    const i = entry.indexOf(':');
+    const rule = { raw: entry, targets: [], validSyntax: i >= 0, invalidModifier: '', numericValues: [] };
+    if (i < 0) return rule;
+    rule.targets = parseBracketedOptionTokens(entry.slice(0, i));
+    if (rule.targets.length <= 0) rule.validSyntax = false;
+    const tokens = tokenizeWhitespaceListPreservingQuotes(entry.slice(i + 1))
+      .map((token) => normalizeConfigToken(token))
+      .filter((token) => token && token !== '+');
+    if (tokens.length <= 0) rule.validSyntax = false;
+    for (let idx = 0; idx < tokens.length; idx += 1) {
+      const num = tokens[idx];
+      if (!isIntegerToken(num)) {
+        rule.validSyntax = false;
+        rule.invalidModifier = num;
+        break;
+      }
+      rule.numericValues.push(num);
+      const modifier = tokens[idx + 1] || '';
+      if (!modifier) continue;
+      if (isIntegerToken(modifier)) continue;
+      if (modifier === 'times-bonus' || modifier === 'when-fortified' || modifier === 'when-fortified-same-continent') {
+        idx += 1;
+        continue;
+      }
+      rule.validSyntax = false;
+      rule.invalidModifier = modifier;
+      break;
+    }
+    return rule;
+  });
+}
+
 function parseBuildingPrereqItems(value) {
   return parseDelimitedStructuredEntries(value).map((item) => {
     const i = item.indexOf(':');
@@ -1209,6 +1484,46 @@ function lintBaseConfig(bundle, result) {
       addGeneralIssue(result, 'base', `C3X key "${key}" has invalid integer value "${value}".`, 'base-invalid-integer');
       return;
     }
+    if (meta.family === 'fixed_int_array' || meta.family === 'fixed_bool_array') {
+      const parsed = parseFixedVisibilityArray(value, meta.family === 'fixed_bool_array' ? 'boolean' : 'integer');
+      if (value && !parsed.ok) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has invalid fixed ${meta.family === 'fixed_bool_array' ? 'boolean' : 'integer'} array: ${parsed.error}.`, 'base-invalid-fixed-array');
+      }
+      return;
+    }
+    if (meta.family === 'unit_type_tags') {
+      if (!hasBalancedQuotes(value)) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed quoted list syntax.`, 'base-malformed-list');
+        return;
+      }
+      const malformed = parseDelimitedStructuredEntries(value).filter((entry) => entry && entry.indexOf(':') < 0);
+      if (malformed.length > 0) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed unit type tag syntax.`, 'base-malformed-unit-type-tags');
+      }
+      return;
+    }
+    if (meta.family === 'counter_rules') {
+      if (!hasBalancedQuotes(value)) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed quoted list syntax.`, 'base-malformed-list');
+        return;
+      }
+      const malformed = parseCounterRuleItems(value).filter((rule) => !rule.validSyntax);
+      if (malformed.length > 0) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed counter rule syntax.`, 'base-malformed-counter-rules');
+      }
+      return;
+    }
+    if (meta.family === 'unit_visibility_rules') {
+      if (!hasBalancedQuotes(value)) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed quoted list syntax.`, 'base-malformed-list');
+        return;
+      }
+      const malformed = parseUnitVisibilityRuleItems(value).filter((rule) => !rule.validSyntax);
+      if (malformed.length > 0) {
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed unit visibility rule syntax.`, 'base-malformed-unit-visibility-rules');
+      }
+      return;
+    }
     if (Array.isArray(meta.options) && meta.options.length > 0) {
       if (meta.type === 'string-list' || meta.family === 'bitfield_list') {
         if (!hasBalancedQuotes(value)) {
@@ -1237,6 +1552,7 @@ function buildBaseReferenceContext(bundle) {
     const kind = String(entry && entry.improvementKind || '').trim().toLowerCase();
     return kind === 'wonder' || kind === 'small_wonder';
   });
+  const districtSections = (((((bundle || {}).tabs || {}).districts || {}).model || {}).sections) || [];
   return {
     civilizations: getReferenceSetFromBundle(bundle, 'civilizations'),
     technologies: getReferenceSetFromBundle(bundle, 'technologies'),
@@ -1244,7 +1560,10 @@ function buildBaseReferenceContext(bundle) {
     governments: getReferenceSetFromBundle(bundle, 'governments'),
     improvements: getReferenceSetFromBundle(bundle, 'improvements'),
     improvementWonders,
-    units: getReferenceSetFromBundle(bundle, 'units')
+    units: getReferenceSetFromBundle(bundle, 'units'),
+    districts: toNormalizedLookupSet(Array.isArray(districtSections)
+      ? districtSections.map((section) => getFieldValue(section, 'name'))
+      : [])
   };
 }
 
@@ -1296,11 +1615,37 @@ function addBaseReferenceIssue(result, key, targetLabel, invalidValues) {
   );
 }
 
+function collectValidUnitTypeTagLabels(bundle, unitSet) {
+  const groups = parseUnitTypeTagItems(getBaseRowValue(bundle, 'unit_type_tags'));
+  const hasUnitSet = unitSet instanceof Set && unitSet.size > 0;
+  const labels = new Set();
+  groups.forEach((group) => {
+    const label = normalizeConfigToken(group && group.name);
+    if (!label) return;
+    const members = Array.isArray(group && group.units) ? group.units : [];
+    const hasValidMember = !hasUnitSet || members.some((unit) => {
+      const lookup = normalizeReferenceLookup(unit);
+      return lookup && lookup !== 'to' && (unitSet.has(lookup) || labels.has(lookup));
+    });
+    if (hasValidMember) labels.add(normalizeReferenceLookup(label));
+  });
+  return labels;
+}
+
+function isKnownUnitOrTagToken(value, unitSet, tagLabels) {
+  const display = normalizeConfigToken(value);
+  const lookup = normalizeReferenceLookup(display);
+  if (!lookup || lookup === '*') return true;
+  if (tagLabels instanceof Set && tagLabels.has(lookup)) return true;
+  return referenceKnownInAny(display, [unitSet]);
+}
+
 function auditBaseReferenceCompatibility(bundle, result) {
   const rows = (((bundle || {}).tabs || {}).base || {}).rows;
   const list = Array.isArray(rows) ? rows : [];
   if (list.length <= 0) return;
   const context = buildBaseReferenceContext(bundle);
+  const unitTypeTagLabels = collectValidUnitTypeTagLabels(bundle, context.units);
 
   list.forEach((row) => {
     const key = String(row && row.key || '').trim();
@@ -1318,14 +1663,15 @@ function auditBaseReferenceCompatibility(bundle, result) {
     if (key === 'building_prereqs_for_units') {
       const items = parseBuildingPrereqItems(value);
       addBaseReferenceIssue(result, key, 'improvement/building name', collectInvalidReferences(items.map((item) => item.building), context.improvements));
-      addBaseReferenceIssue(result, key, 'unit name', collectInvalidReferences(items.flatMap((item) => item.units || []), context.units));
+      const invalidUnits = items.flatMap((item) => item.units || []).filter((name) => !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels));
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalidUnits));
       return;
     }
 
     if (key === 'production_perfume' || key === 'perfume_specs') {
       const names = parseNameAmountItems(value).map((item) => item.name);
-      const invalid = names.filter((name) => !referenceKnownInAny(name, [context.improvements, context.units]));
-      addBaseReferenceIssue(result, key, 'unit or improvement name', collectUniqueValues(invalid));
+      const invalid = names.filter((name) => !referenceKnownInAny(name, [context.improvements, context.units]) && !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels));
+      addBaseReferenceIssue(result, key, 'unit, unit type tag, or improvement name', collectUniqueValues(invalid));
       return;
     }
 
@@ -1349,8 +1695,65 @@ function auditBaseReferenceCompatibility(bundle, result) {
       return;
     }
 
+    if (key === 'unit_type_tags') {
+      const localLabels = new Set();
+      const invalid = [];
+      parseUnitTypeTagItems(value).forEach((group) => {
+        const members = Array.isArray(group && group.units) ? group.units : [];
+        members.forEach((member) => {
+          const lookup = normalizeReferenceLookup(member);
+          if (!lookup || lookup === 'to') return;
+          if (!referenceKnownInAny(member, [context.units]) && !localLabels.has(lookup)) invalid.push(member);
+        });
+        const label = normalizeReferenceLookup(group && group.name);
+        if (label) localLabels.add(label);
+      });
+      addBaseReferenceIssue(result, key, 'unit name or previously defined unit type tag', collectUniqueValues(invalid));
+      return;
+    }
+
+    if (key === 'counter_rules') {
+      const invalidCombatants = [];
+      const invalidTerrain = [];
+      const invalidDistricts = [];
+      parseCounterRuleItems(value).forEach((rule) => {
+        if (!rule.validSyntax) return;
+        [rule.attacker, rule.defender].forEach((name) => {
+          if (!isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels)) invalidCombatants.push(name);
+        });
+        if (rule.terrain && !COUNTER_RULE_TERRAIN_TOKENS.includes(String(rule.terrain || '').trim().toLowerCase())) {
+          invalidTerrain.push(rule.terrain);
+        }
+        if (rule.district && !referenceKnownInAny(rule.district, [context.districts])) invalidDistricts.push(rule.district);
+      });
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalidCombatants));
+      addBaseReferenceIssue(result, key, 'terrain token', collectUniqueValues(invalidTerrain));
+      addBaseReferenceIssue(result, key, 'district name', collectUniqueValues(invalidDistricts));
+      return;
+    }
+
+    if (key === 'unit_visibility_rules') {
+      const invalidTargets = [];
+      parseUnitVisibilityRuleItems(value).forEach((rule) => {
+        if (!rule.validSyntax) return;
+        (Array.isArray(rule.targets) ? rule.targets : []).forEach((target) => {
+          const lookup = normalizeReferenceLookup(target);
+          if (!lookup || C3X_UNIT_VISIBILITY_CLASSES.includes(lookup)) return;
+          if (!isKnownUnitOrTagToken(target, context.units, unitTypeTagLabels)) invalidTargets.push(target);
+        });
+      });
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalidTargets));
+      return;
+    }
+
     if (key === 'unit_limits') {
-      addBaseReferenceIssue(result, key, 'unit name', collectInvalidReferences(parseNameAmountItems(value).map((item) => item.name), context.units));
+      const invalid = parseNameAmountItems(value)
+        .map((item) => item.name)
+        .filter((name) => {
+          const lookup = normalizeReferenceLookup(name);
+          return lookup && !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels);
+        });
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalid));
       return;
     }
 
@@ -1364,6 +1767,11 @@ function auditBaseReferenceCompatibility(bundle, result) {
         improvements: 'improvement/building name',
         units: 'unit name'
       };
+      if (meta.referenceTab === 'units') {
+        const invalid = parseBracketedOptionTokens(value).filter((name) => !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels));
+        addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalid));
+        return;
+      }
       addBaseReferenceIssue(result, key, labelByTab[meta.referenceTab] || 'reference name', collectInvalidReferences(parseBracketedOptionTokens(value), context[meta.referenceTab]));
       return;
     }
@@ -1393,6 +1801,13 @@ function lintSectionFieldValue(fieldSpec, rawValue) {
   }
   if (fieldSpec.type === 'number' && !isIntegerToken(value)) {
     return `Field "${fieldSpec.key}" has invalid integer value "${value}".`;
+  }
+  if (fieldSpec.type === 'decimal' && !isDecimalNumberToken(value)) {
+    return `Field "${fieldSpec.key}" has invalid decimal value "${value}".`;
+  }
+  if (fieldSpec.type === 'day-night-hours') {
+    const issue = validateDayNightHoursSyntax(value);
+    if (issue) return `Field "${fieldSpec.key}" has ${issue}`;
   }
   if (fieldSpec.type === 'select' && Array.isArray(acceptedOptions) && acceptedOptions.length > 0 && !acceptedOptions.includes(value)) {
     return `Field "${fieldSpec.key}" has unknown value "${value}". Expected one of: ${acceptedOptions.join(', ')}.`;
@@ -1433,6 +1848,72 @@ function lintSectionedTab(bundle, result, tabKey) {
       const fieldIssue = lintSectionFieldValue({ ...fieldSpec, key }, field && field.value);
       if (fieldIssue) {
         addSectionIssue(result, tabKey, index, `${label}: ${fieldIssue}`, 'section-invalid-value');
+      }
+    });
+  });
+}
+
+function lintEmbeddedAnimationSpecs(bundle, result, tabKey, labelPrefix, options = {}) {
+  const model = ((((bundle || {}).tabs || {})[tabKey] || {}).model) || null;
+  const sections = Array.isArray(model && model.sections) ? model.sections : [];
+  sections.forEach((section, index) => {
+    const label = getSectionDisplayName(section, index, labelPrefix);
+    const fields = Array.isArray(section && section.fields) ? section.fields : [];
+    const animationSpecs = fields
+      .filter((field) => String(field && field.key || '').trim() === 'animation')
+      .map((field) => String(field && field.value || '').trim())
+      .filter(Boolean);
+    animationSpecs.forEach((spec, specIndex) => {
+      const parsed = parseNaturalWonderAnimationSpec(spec);
+      const issue = validateDayNightHoursSyntax(parsed.show_in_day_night_hours);
+      if (issue) {
+        addSectionIssue(
+          result,
+          tabKey,
+          index,
+          `${label}: Animation ${specIndex + 1} has ${issue}`,
+          `${tabKey}-animation-invalid-hours`
+        );
+      }
+      const frameTime = String(parsed.frame_time_seconds || '').trim();
+      if (frameTime && !isDecimalNumberToken(frameTime)) {
+        addSectionIssue(
+          result,
+          tabKey,
+          index,
+          `${label}: Animation ${specIndex + 1} has invalid frame_time_seconds value "${frameTime}".`,
+          `${tabKey}-animation-invalid-frame-time`
+        );
+      }
+      if (options.validateCultures) {
+        const invalidCultures = tokenizeListPreservingQuotes(parsed.show_in_cultures || '')
+          .map((token) => normalizeConfigToken(token).toUpperCase())
+          .filter(Boolean)
+          .filter((token) => !DISTRICT_ANIMATION_CULTURE_OPTIONS.includes(token));
+        if (invalidCultures.length > 0) {
+          addSectionIssue(
+            result,
+            tabKey,
+            index,
+            `${label}: Animation ${specIndex + 1} has unknown culture value${invalidCultures.length === 1 ? '' : 's'}: ${invalidCultures.join(', ')}.`,
+            `${tabKey}-animation-invalid-cultures`
+          );
+        }
+      }
+      if (options.validateEras) {
+        const invalidEras = tokenizeListPreservingQuotes(parsed.show_in_eras || '')
+          .map((token) => normalizeConfigToken(token).toLowerCase())
+          .filter(Boolean)
+          .filter((token) => !DISTRICT_ANIMATION_ERA_OPTIONS.includes(token));
+        if (invalidEras.length > 0) {
+          addSectionIssue(
+            result,
+            tabKey,
+            index,
+            `${label}: Animation ${specIndex + 1} has unknown era value${invalidEras.length === 1 ? '' : 's'}: ${invalidEras.join(', ')}.`,
+            `${tabKey}-animation-invalid-eras`
+          );
+        }
       }
     });
   });
@@ -2149,6 +2630,122 @@ function auditUnitRuntimeAssets(bundle, result) {
   });
 }
 
+function getIniSectionFieldMap(manifest, sectionName) {
+  const target = String(sectionName || '').trim().toUpperCase();
+  const section = (Array.isArray(manifest && manifest.sections) ? manifest.sections : [])
+    .find((candidate) => String(candidate && candidate.name || '').trim().toUpperCase() === target);
+  const out = new Map();
+  (Array.isArray(section && section.fields) ? section.fields : []).forEach((field) => {
+    const key = String(field && (field.keyUpper || field.key) || '').trim().toUpperCase();
+    if (!key || out.has(key)) return;
+    out.set(key, String(field && field.value || '').trim());
+  });
+  return out;
+}
+
+function findTileAnimationRepairFlc(iniDir, animations) {
+  const candidates = [];
+  TILE_ANIMATION_INI_ANIMATION_KEYS.forEach((key) => {
+    const value = String(animations.get(String(key).toUpperCase()) || '').trim();
+    if (!value || !/\.flc$/i.test(value)) return;
+    const flcPath = path.join(iniDir, value.replace(/\\/g, path.sep).replace(/\//g, path.sep));
+    candidates.push({ key: String(key).toUpperCase(), value, path: flcPath, exists: fs.existsSync(flcPath) });
+  });
+  const preferred = candidates.find((candidate) => candidate.key === 'DEFAULT' && candidate.exists)
+    || candidates.find((candidate) => candidate.key === 'ATTACK1' && candidate.exists)
+    || candidates.find((candidate) => candidate.exists);
+  return preferred || null;
+}
+
+function auditTileAnimationIniAssets(bundle, result) {
+  const tab = (((bundle || {}).tabs || {}).animations) || null;
+  const sections = Array.isArray(tab && tab.model && tab.model.sections) ? tab.model.sections : [];
+  const canStageRepair = String(bundle && bundle.mode || '').trim().toLowerCase() === 'scenario';
+  sections.forEach((section, index) => {
+    const label = getSectionDisplayName(section, index, 'Tile Animation');
+    const iniPath = getFieldValue(section, 'ini_path');
+    if (!iniPath) return;
+    const resolvedIniPath = resolveAnimationIniPath(
+      bundle && bundle.c3xPath,
+      iniPath,
+      String(bundle && (bundle.scenarioPath || bundle.scenarioInputPath) || ''),
+      Array.isArray(bundle && bundle.scenarioSearchPaths) ? bundle.scenarioSearchPaths : []
+    );
+    if (!resolvedIniPath) {
+      addSectionIssue(
+        result,
+        'animations',
+        index,
+        `${label}: Missing tile animation INI "${iniPath}".`,
+        'tile-animation-ini-missing'
+      );
+      return;
+    }
+
+    const manifest = parseUnitAnimationIni(resolvedIniPath);
+    const animations = getIniSectionFieldMap(manifest, 'Animations');
+    const sounds = getIniSectionFieldMap(manifest, 'Sound Effects');
+    const defaultFlc = String(animations.get('DEFAULT') || '').trim();
+    const attackFlc = String(animations.get('ATTACK1') || '').trim();
+    const problems = [];
+    if (!defaultFlc) problems.push('DEFAULT is blank');
+    if (!attackFlc) problems.push('ATTACK1 is blank');
+    if (defaultFlc && !/\.flc$/i.test(defaultFlc)) problems.push(`DEFAULT is not an FLC (${defaultFlc})`);
+    if (attackFlc && !/\.flc$/i.test(attackFlc)) problems.push(`ATTACK1 is not an FLC (${attackFlc})`);
+    if (defaultFlc && attackFlc && defaultFlc.toLowerCase() !== attackFlc.toLowerCase()) {
+      problems.push('DEFAULT and ATTACK1 use different files');
+    }
+    const extraAnimationRefs = [];
+    TILE_ANIMATION_INI_ANIMATION_KEYS.forEach((key) => {
+      const upper = String(key).toUpperCase();
+      if (TILE_ANIMATION_INI_REQUIRED_KEYS.has(upper)) return;
+      const value = String(animations.get(upper) || '').trim();
+      if (value) extraAnimationRefs.push(`${key}=${value}`);
+    });
+    if (extraAnimationRefs.length > 0) {
+      problems.push(`extra animation slots are populated (${extraAnimationRefs.join(', ')})`);
+    }
+    const soundRefs = [];
+    sounds.forEach((value, key) => {
+      if (String(value || '').trim()) soundRefs.push(`${key}=${value}`);
+    });
+    if (soundRefs.length > 0) {
+      problems.push(`sound effects are populated (${soundRefs.join(', ')})`);
+    }
+    const iniDir = path.dirname(resolvedIniPath);
+    const repairFlc = findTileAnimationRepairFlc(iniDir, animations);
+    if (repairFlc && repairFlc.exists) {
+      const targetFlcPath = path.join(iniDir, repairFlc.value.replace(/\\/g, path.sep).replace(/\//g, path.sep));
+      if (!fs.existsSync(targetFlcPath)) problems.push(`FLC file is missing (${repairFlc.value})`);
+    }
+    if (defaultFlc && attackFlc && defaultFlc.toLowerCase() === attackFlc.toLowerCase() && /\.flc$/i.test(defaultFlc)) {
+      const flcPath = path.join(iniDir, defaultFlc.replace(/\\/g, path.sep).replace(/\//g, path.sep));
+      if (!fs.existsSync(flcPath)) problems.push(`FLC file is missing (${defaultFlc})`);
+    }
+    if (problems.length <= 0) return;
+    const action = canStageRepair && repairFlc && repairFlc.exists
+      ? {
+        type: 'repair-tile-animation-ini',
+        tabKey: 'animations',
+        sectionIndex: index,
+        iniPath,
+        sourcePath: resolvedIniPath,
+        flcFileName: path.basename(repairFlc.path),
+        label: 'Fix INI',
+        description: `Stage a canonical tile animation INI using ${path.basename(repairFlc.path)}.`
+      }
+      : null;
+    addSectionIssue(
+      result,
+      'animations',
+      index,
+      `${label}: Tile animation INI "${iniPath}" is not in the canonical Tile Animations shape: ${problems.join('; ')}.`,
+      'tile-animation-ini-invalid',
+      action ? { action } : {}
+    );
+  });
+}
+
 function isBiqBackedReferenceEntry(entry) {
   if (!entry || typeof entry !== 'object') return false;
   if (Number.isFinite(Number(entry.biqIndex))) return true;
@@ -2567,6 +3164,10 @@ function auditLoadedBundle(bundle, options = {}) {
   lintSectionedTab(bundle, result, 'districts');
   lintSectionedTab(bundle, result, 'wonders');
   lintSectionedTab(bundle, result, 'naturalWonders');
+  lintSectionedTab(bundle, result, 'animations');
+  lintEmbeddedAnimationSpecs(bundle, result, 'districts', 'District', { validateCultures: true, validateEras: true });
+  lintEmbeddedAnimationSpecs(bundle, result, 'naturalWonders', 'Natural Wonder');
+  auditTileAnimationIniAssets(bundle, result);
   auditCompatibility(bundle, result);
   auditCurrentDistrictArt(bundle, result);
   auditCurrentWonderArt(bundle, result);

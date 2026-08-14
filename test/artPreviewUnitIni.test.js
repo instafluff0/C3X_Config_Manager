@@ -241,6 +241,63 @@ test('resolveUnitIniPath prefers candidate whose INI resolves an existing FLC', 
   assert.equal(resolved, path.join(basePath, `${unit}.ini`));
 });
 
+test('animationIni preview prefers scenario Art/Animations before C3X fallback', () => {
+  const c3xRoot = mkTmpDir();
+  const scenarioRoot = mkTmpDir();
+  const relDir = path.join('Resources', 'Bison');
+  const c3xDir = path.join(c3xRoot, 'Art', 'Animations', relDir);
+  const scenarioDir = path.join(scenarioRoot, 'Art', 'Animations', relDir);
+  fs.mkdirSync(c3xDir, { recursive: true });
+  fs.mkdirSync(scenarioDir, { recursive: true });
+
+  fs.writeFileSync(path.join(c3xDir, 'Bison.ini'), 'DEFAULT=C3X.flc\n', 'latin1');
+  fs.writeFileSync(path.join(scenarioDir, 'Bison.INI'), 'DEFAULT=Scenario.flc\n', 'latin1');
+  const c3xRgba = Buffer.alloc(200 * 240 * 4, 255);
+  const scenarioRgba = Buffer.alloc(200 * 240 * 4, 255);
+  fs.writeFileSync(path.join(c3xDir, 'C3X.flc'), encodeRgbaToLeaderFlc(c3xRgba, 200, 240));
+  fs.writeFileSync(path.join(scenarioDir, 'Scenario.flc'), encodeRgbaToLeaderFlc(scenarioRgba, 200, 240));
+
+  const res = getPreview({
+    kind: 'animationIni',
+    c3xPath: c3xRoot,
+    scenarioPath: path.join(scenarioRoot, 'Instafluff_Scenario.biq'),
+    iniPath: 'Resources\\Bison\\Bison',
+    maxFrames: 1
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(path.resolve(res.sourcePath), path.join(scenarioDir, 'Scenario.flc'));
+  assert.equal(res.width, 200);
+  assert.equal(res.height, 240);
+});
+
+test('animationIni preview resolves FLC values relative to Art/Animations root', () => {
+  const c3xRoot = mkTmpDir();
+  const relDir = path.join('Districts', 'WindFarm');
+  const animationDir = path.join(c3xRoot, 'Art', 'Animations', relDir);
+  fs.mkdirSync(animationDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(animationDir, 'WindFarm.INI'),
+    '[Animations]\nDEFAULT=Districts\\WindFarm\\WindFarm.flc\n',
+    'latin1'
+  );
+  const rgba = Buffer.alloc(200 * 240 * 4, 255);
+  fs.writeFileSync(path.join(animationDir, 'WindFarm.flc'), encodeRgbaToLeaderFlc(rgba, 200, 240));
+
+  const res = getPreview({
+    kind: 'animationIni',
+    c3xPath: c3xRoot,
+    iniPath: 'Districts/WindFarm/WindFarm.INI',
+    maxFrames: 1
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(path.resolve(res.sourcePath), path.join(animationDir, 'WindFarm.flc'));
+  assert.equal(res.width, 200);
+  assert.equal(res.height, 240);
+});
+
 test('unitAnimationManifest returns all parsed actions and source paths', () => {
   const civ3Root = mkTmpDir();
   const conquestsUnitDir = path.join(civ3Root, 'Conquests', 'Art', 'Units', 'Archer');

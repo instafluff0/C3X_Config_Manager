@@ -331,6 +331,9 @@ const state = {
   filesReadRenderTimer: null,
   filesReadSearchInputMirror: '',
   filesReadSearchQuery: '',
+  filesReadPreviewWritesByPath: {},
+  filesReadPreviewWritesLoaded: false,
+  filesReadPreviewWritesRequestId: 0,
   fileDiffOpen: false,
   saveUi: {
     toastTimer: null,
@@ -849,7 +852,66 @@ function normalizeTooltipDelay(value) {
 }
 
 const DIRECTION_OPTIONS = ['northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest', 'north'];
+const ANIMATION_TYPE_OPTIONS = ['terrain', 'resource', 'pcx', 'destruct-initial', 'destruct-after', 'coastal-wave'];
 const TERRAIN_OPTIONS = ['desert', 'plains', 'grassland', 'jungle', 'tundra', 'floodplain', 'marsh', 'hill', 'mountain', 'forest', 'volcano', 'snow-forest', 'snow-mountain', 'snow-volcano', 'coast', 'sea', 'ocean'];
+const C3X_VISIBILITY_TERRAIN_COLUMNS = Object.freeze([
+  { key: 'desert', label: 'DESRT' },
+  { key: 'plains', label: 'PLAIN' },
+  { key: 'grassland', label: 'GRSLD' },
+  { key: 'tundra', label: 'TNDRA' },
+  { key: 'floodplain', label: 'FLDPL' },
+  { key: 'hills', previewKey: 'hill', label: 'HILLS' },
+  { key: 'mountains', previewKey: 'mountain', label: 'MNTNS' },
+  { key: 'forest', label: 'FORST' },
+  { key: 'jungle', label: 'JUNGL' },
+  { key: 'marsh', label: 'MARSH' },
+  { key: 'volcano', label: 'VLCNO' },
+  { key: 'coast', label: 'COAST' },
+  { key: 'sea', label: 'SEA' },
+  { key: 'ocean', label: 'OCEAN' }
+]);
+const C3X_VISIBILITY_ARRAY_KEYS = Object.freeze({
+  terrain_visibility_see_height: 'integer',
+  terrain_visibility_seen_height: 'integer',
+  terrain_visibility_bonus: 'integer',
+  terrain_visibility_flat_bonus: 'boolean'
+});
+const C3X_COUNTER_EFFECT_FIELDS = Object.freeze([
+  { key: 'selfAtk', token: 'self-atk', label: 'Self Atk' },
+  { key: 'selfDef', token: 'self-def', label: 'Self Def' },
+  { key: 'enemyAtk', token: 'enemy-atk', label: 'Enemy Atk' },
+  { key: 'enemyDef', token: 'enemy-def', label: 'Enemy Def' },
+  { key: 'selfBombard', token: 'self-bombard', label: 'Self Bombard' },
+  { key: 'enemyBombard', token: 'enemy-bombard', label: 'Enemy Bombard' }
+]);
+const C3X_COUNTER_TERRAIN_OPTIONS = Object.freeze([
+  { value: 'desert', label: 'Desert' },
+  { value: 'plains', label: 'Plains' },
+  { value: 'grassland', label: 'Grassland' },
+  { value: 'tundra', label: 'Tundra' },
+  { value: 'floodplain', label: 'Floodplain' },
+  { value: 'hill', label: 'Hills' },
+  { value: 'mountain', label: 'Mountains' },
+  { value: 'forest', label: 'Forest' },
+  { value: 'jungle', label: 'Jungle' },
+  { value: 'marsh', label: 'Marsh' },
+  { value: 'volcano', label: 'Volcano' },
+  { value: 'coast', label: 'Coast' },
+  { value: 'sea', label: 'Sea' },
+  { value: 'ocean', label: 'Ocean' },
+  { value: 'river', label: 'River' },
+  { value: 'lake', label: 'Lake', previewKey: 'coast' },
+  { value: 'snow-forest', label: 'Snow Forest', previewKey: 'forest' },
+  { value: 'snow-mountain', label: 'Snow Mountain', previewKey: 'mountain' },
+  { value: 'snow-volcano', label: 'Snow Volcano', previewKey: 'volcano' }
+]);
+const C3X_COUNTER_EXPERIENCE_OPTIONS = Object.freeze([
+  { value: 'conscript', label: 'Conscript' },
+  { value: 'regular', label: 'Regular' },
+  { value: 'veteran', label: 'Veteran' },
+  { value: 'elite', label: 'Elite' }
+]);
+const C3X_UNIT_VISIBILITY_CLASSES = Object.freeze(['Land', 'Sea', 'Air']);
 const TAB_ICONS = {
   units: 'icon-unit',
   technologies: 'icon-tech',
@@ -879,7 +941,7 @@ const TAB_GROUPS = [
 ];
 // Minimum C3X release required for each tab key. Tabs not listed here are always shown.
 // Use 'R<N>' strings to match the C3X_RELEASE_BY_KEY convention.
-const SUPPORTED_C3X_RELEASE = 'R27';
+const SUPPORTED_C3X_RELEASE = 'R28';
 const TAB_MIN_RELEASE = Object.freeze({
   animations: 'R28'
 });
@@ -970,6 +1032,7 @@ const BASE_ENUM_OPTIONS = {
   unit_cycle_search_criteria: ['standard', 'similar-near-start', 'similar-near-destination'],
   day_night_cycle_mode: ['off', 'timer', 'user-time', 'every-turn', 'specified'],
   seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified'],
+  pinned_season_for_seasonal_cycle: ['summer', 'fall', 'winter', 'spring'],
   override_no_ai_patrol: ['none', 'one', 'zero'],
   override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random']
 };
@@ -981,6 +1044,7 @@ const BASE_SEGMENTED_OPTIONS = {
   seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified'],
   override_no_ai_patrol: ['none', 'one', 'zero'],
   override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random'],
+  pollution_spawn_effect: ['standard', 'reduce-population', 'reduce-population-and-pollute-tile'],
   distribution_hub_yield_division_mode: ['flat', 'scale-by-city-count'],
   ai_distribution_hub_build_strategy: ['auto', 'by-city-count'],
   ai_auto_build_great_wall_strategy: ['all-borders', 'other-civ-bordered-only'],
@@ -1001,7 +1065,6 @@ const BASE_MULTI_CHOICE_LIST_OPTIONS = {
   special_zone_of_control_rules: ['amphibious', 'lethal', 'aerial', 'not-from-inside', 'all'],
   land_transport_rules: ['load-onto-boat', 'join-army', 'no-defense-from-inside', 'no-escape'],
   special_helicopter_rules: ['allow-on-carriers', 'passenger-airdrop', 'no-defense-from-inside', 'no-escape'],
-  show_tile_destruct_animation_after: ['bombard', 'bomb', 'pillage'],
   enabled_seasons: ['summer', 'fall', 'winter', 'spring']
 };
 
@@ -1012,6 +1075,9 @@ const BASE_STRUCTURED_LIST_FIELDS = new Set([
   'technology_perfume',
   'resource_perfume',
   'government_perfume',
+  'unit_type_tags',
+  'counter_rules',
+  'unit_visibility_rules',
   'building_prereqs_for_units',
   'buildings_generating_resources',
   'ai_multi_start_extra_palaces'
@@ -1025,6 +1091,8 @@ const BASE_FIELD_DETAILS = Object.freeze({
   enable_wonder_districts: 'Enables the wonder district layer.',
   enable_natural_wonders: 'Enables natural wonder systems and placement.',
   enable_custom_animations: 'Enables tile animation configs.',
+  show_tile_destruct_animation_after: 'Unit actions that trigger tile destruction animation display.',
+  show_tile_destruction_animation_for_turns: 'Number of turns to keep tile destruction animation visible.',
   expand_water_tile_checks_to_city_work_area: 'Uses the full city work radius for water-adjacency checks.',
   workers_can_enter_coast: 'Lets workers move onto coast tiles without embarking.',
   max_contiguous_bridge_districts: 'Sets the maximum number of bridge districts that can be contiguous in a line.',
@@ -1074,6 +1142,14 @@ const EDITABLE_TAB_KEYS = [
   'rules'
 ];
 
+function normalizeEditableTabKey(tabKey) {
+  const raw = String(tabKey || '').trim();
+  if (!raw) return '';
+  if (EDITABLE_TAB_KEYS.includes(raw)) return raw;
+  const lower = raw.toLowerCase();
+  return EDITABLE_TAB_KEYS.find((key) => String(key || '').toLowerCase() === lower) || '';
+}
+
 const SECTION_SCHEMAS = {
   districts: {
     marker: '#District',
@@ -1086,10 +1162,12 @@ const SECTION_SCHEMAS = {
       { key: 'img_paths', label: 'Image Paths', desc: 'List of district PCX files.', type: 'list' },
       { key: 'img_column_count', label: 'Image Column Count', desc: 'Override sprite columns per district image.', type: 'number', minRelease: 'R27' },
       { key: 'render_strategy', label: 'Render Strategy', desc: 'Choose whether art columns represent build count or individual buildings.', type: 'select', options: ['by-count', 'by-building'], minRelease: 'R27' },
+      { key: 'type', label: 'Type', desc: 'Choose whether this behaves as a city-range district or a worked-tile improvement.', type: 'select', options: ['district', 'tile-improvement'], minRelease: 'R28' },
       { key: 'custom_width', label: 'Custom Width', desc: 'Optional custom district sprite width.', type: 'number', minRelease: 'R27' },
       { key: 'custom_height', label: 'Custom Height', desc: 'Optional custom district sprite height.', type: 'number', minRelease: 'R27' },
       { key: 'x_offset', label: 'X Offset', desc: 'Horizontal pixel offset for district art.', type: 'number', minRelease: 'R27' },
       { key: 'y_offset', label: 'Y Offset', desc: 'Vertical pixel offset for district art.', type: 'number', minRelease: 'R27' },
+      { key: 'animation', label: 'Animation Items', desc: 'Custom FLC animations shown over completed districts.', type: 'text', multi: true, minRelease: 'R28' },
       { key: 'btn_tile_sheet_row', label: 'Button Tile Row', desc: 'Row index in district button sheet.', type: 'number' },
       { key: 'btn_tile_sheet_column', label: 'Button Tile Column', desc: 'Column index in district button sheet.', type: 'number' },
       { key: 'advance_prereqs', label: 'Tech Prerequisites', desc: 'List of required advances.', type: 'list' },
@@ -1197,7 +1275,7 @@ const SECTION_SCHEMAS = {
       { key: 'happiness_bonus', label: 'Happiness Bonus', desc: 'Worked-tile happiness bonus.', type: 'number', minRelease: 'R27' },
       { key: 'Impassable', label: 'Impassable', desc: 'Disallow movement through tile.', type: 'bool', minRelease: 'R27' },
       { key: 'Impassable_to_wheeled', label: 'Impassable To Wheeled', desc: 'Disallow wheeled movement unless connected.', type: 'bool', minRelease: 'R27' },
-      { key: 'animation', label: 'Animation Item', desc: 'Natural wonder animation spec string.', type: 'text', multi: true, minRelease: 'R28' }
+      { key: 'animation', label: 'Animation Items', desc: 'Natural wonder animation spec string.', type: 'text', multi: true, minRelease: 'R28' }
     ],
     template: {
       name: 'New Natural Wonder',
@@ -1214,7 +1292,8 @@ const SECTION_SCHEMAS = {
     fields: [
       { key: 'name', label: 'Animation Name', desc: 'Unique animation identifier.', type: 'text', required: true },
       { key: 'ini_path', label: 'INI Path', desc: 'Relative to Art/Animations/.', type: 'text', required: true },
-      { key: 'type', label: 'Animation Type', desc: 'Rule type controlling where this animation can appear.', type: 'select', options: ['terrain', 'resource', 'pcx', 'coastal-wave'], required: true },
+      { key: 'frame_time_seconds', label: 'Frame Time', desc: 'Per-frame seconds.', type: 'text' },
+      { key: 'type', label: 'Animation Type', desc: 'Rule type controlling where this animation can appear.', type: 'select', options: ANIMATION_TYPE_OPTIONS, required: true },
       { key: 'resource_type', label: 'Resource Type', desc: 'Required for type=resource.', type: 'text' },
       { key: 'pcx_file', label: 'PCX File', desc: 'Required for type=pcx.', type: 'select', options: ['deltaRivers.pcx', 'floodplains.pcx', 'LMHills.pcx', 'Mountains.pcx', 'Mountains-snow.pcx', 'mtnRivers.pcx', 'Volcanos.pcx', 'Volcanos-snow.pcx', 'waterfalls.pcx', 'xhills.pcx'] },
       { key: 'pcx_index', label: 'PCX Index', desc: 'Required for type=pcx.', type: 'number' },
@@ -1223,7 +1302,6 @@ const SECTION_SCHEMAS = {
       { key: 'direction', label: 'Direction Override', desc: 'Optional fixed facing direction.', type: 'select', options: DIRECTION_OPTIONS },
       { key: 'x_offset', label: 'X Offset', desc: 'Horizontal pixel offset.', type: 'number' },
       { key: 'y_offset', label: 'Y Offset', desc: 'Vertical pixel offset.', type: 'number' },
-      { key: 'frame_time_seconds', label: 'Frame Time', desc: 'Per-frame seconds.', type: 'text' },
       { key: 'show_in_day_night_hours', label: 'Day/Night Hours', desc: 'Hour list/ranges where animation appears.', type: 'list' },
       { key: 'show_in_seasons', label: 'Seasons', desc: 'Allowed seasons.', type: 'list', options: ['spring', 'summer', 'fall', 'winter'] }
     ],
@@ -1772,6 +1850,9 @@ function getFilesEntryChangeCategory(entry, access) {
   if (!state.isDirty) return '';
   if (entry.isPrimaryBaseTarget && !entry.baseDirty) return '';
   const explicitCategory = String(entry.changeCategory || '').trim().toLowerCase();
+  if (state.filesReadPreviewWritesLoaded && entry.potentialWrite && !entry.previewPlanWrite && !entry.generatedScienceAdvisorArt) {
+    return '';
+  }
   if (entry.potentialWrite) {
     if (access && !access.exists) return 'new';
     if (explicitCategory) return explicitCategory;
@@ -1933,6 +2014,33 @@ function collectFilesModalEntries() {
     byPath.set(pathValue, pendingEntry);
   });
 
+  Object.values(state.filesReadPreviewWritesByPath || {}).forEach((write) => {
+    const pathValue = String(write && write.path || '').trim();
+    if (!pathValue) return;
+    const existing = byPath.get(pathValue);
+    const changeCategory = write.exists ? 'changed' : 'new';
+    if (existing) {
+      existing.kind = 'write';
+      existing.potentialWrite = true;
+      existing.previewPlanWrite = true;
+      existing.changeCategory = changeCategory;
+      existing.note = mapSaveKindLabel(write.kind) || existing.note || 'Pending save target';
+      if (String(write.kind || '').toLowerCase() === 'tileanimationini') existing.animationIni = true;
+      return;
+    }
+    const entry = {
+      path: pathValue,
+      kind: 'write',
+      note: mapSaveKindLabel(write.kind) || 'Pending save target',
+      potentialWrite: true,
+      previewPlanWrite: true,
+      changeCategory,
+      animationIni: String(write.kind || '').toLowerCase() === 'tileanimationini' || isAnimationIniPath(pathValue)
+    };
+    out.push(entry);
+    byPath.set(pathValue, entry);
+  });
+
   getScienceAdvisorArrowPendingWriteEntries().forEach((scienceAdvisorEntry) => {
     const pathValue = String(scienceAdvisorEntry && scienceAdvisorEntry.path || '').trim();
     if (!pathValue) return;
@@ -2049,6 +2157,60 @@ function collectFilesModalEntries() {
 
 function markFilesReadEntriesDirty() {
   state.filesReadEntriesCacheDirty = true;
+}
+
+function resetFilesReadPreviewWrites() {
+  state.filesReadPreviewWritesByPath = {};
+  state.filesReadPreviewWritesLoaded = false;
+  state.filesReadPreviewWritesRequestId = Number(state.filesReadPreviewWritesRequestId || 0) + 1;
+  markFilesReadEntriesDirty();
+}
+
+function buildCurrentSavePreviewPayload() {
+  if (!state.bundle) return null;
+  const dirtyTabSet = getDirtyTabSetForSave();
+  return buildSavePayload({
+    tabsToSave: getTabsForSavePayload({ dirtyTabs: dirtyTabSet }),
+    dirtyTabs: Array.from(dirtyTabSet)
+  });
+}
+
+async function refreshFilesReadPreviewWrites(options = {}) {
+  if (!state.bundle || !window.c3xManager || typeof window.c3xManager.previewSavePlan !== 'function') {
+    state.filesReadPreviewWritesByPath = {};
+    state.filesReadPreviewWritesLoaded = false;
+    markFilesReadEntriesDirty();
+    return;
+  }
+  const payload = buildCurrentSavePreviewPayload();
+  if (!payload) return;
+  const requestId = Number(state.filesReadPreviewWritesRequestId || 0) + 1;
+  state.filesReadPreviewWritesRequestId = requestId;
+  try {
+    const preview = await window.c3xManager.previewSavePlan(payload);
+    if (state.filesReadPreviewWritesRequestId !== requestId) return;
+    const byPath = {};
+    (Array.isArray(preview && preview.writes) ? preview.writes : []).forEach((write) => {
+      const pathValue = String(write && write.path || '').trim();
+      if (!pathValue) return;
+      byPath[pathValue] = {
+        path: pathValue,
+        kind: String(write && write.kind || ''),
+        exists: !!(write && write.exists)
+      };
+    });
+    state.filesReadPreviewWritesByPath = byPath;
+    state.filesReadPreviewWritesLoaded = !!(preview && preview.ok);
+  } catch (_err) {
+    if (state.filesReadPreviewWritesRequestId !== requestId) return;
+    state.filesReadPreviewWritesByPath = {};
+    state.filesReadPreviewWritesLoaded = false;
+  }
+  markFilesReadEntriesDirty();
+  if (options && options.refreshAccess) void refreshFilesReadAccess();
+  if (el.filesReadModalOverlay && !el.filesReadModalOverlay.classList.contains('hidden')) {
+    scheduleFilesReadModalRender();
+  }
 }
 
 function getFilesModalEntriesCached() {
@@ -2252,7 +2414,12 @@ function shouldIncludeFilesEntryByFilter(entry) {
   if (f.typeText) selectedTypes.push('text');
   if (f.typeBiq) selectedTypes.push('biq');
   if (f.typeArtPcx) selectedTypes.push('artPcx');
-  if (selectedTypes.length > 0 && !selectedTypes.includes(fileType)) return false;
+  if (selectedTypes.length > 0 && !selectedTypes.includes(fileType)) {
+    const pendingAnimationIniMatchesConfigIni = fileType === 'animationIni'
+      && (entry.previewPlanWrite || entry.potentialWrite)
+      && selectedTypes.includes('configIni');
+    if (!pendingAnimationIniMatchesConfigIni) return false;
+  }
 
   const selectedStatuses = [];
   if (f.statusNew) selectedStatuses.push('new');
@@ -2495,6 +2662,7 @@ function openFilesReadModal() {
   renderFilesReadModal();
   el.filesReadModalOverlay.classList.remove('hidden');
   el.filesReadModalOverlay.setAttribute('aria-hidden', 'false');
+  void refreshFilesReadPreviewWrites({ refreshAccess: true });
   void refreshFilesReadAccess();
 }
 
@@ -3294,7 +3462,7 @@ function buildSerializedScopedSnapshot(scope, tabsByKey) {
 }
 
 function buildReferenceEntryUndoKey(tabKey, entry, fallbackIndex) {
-  const normalizedTabKey = String(tabKey || '').trim().toLowerCase();
+  const normalizedTabKey = normalizeEditableTabKey(tabKey);
   if (!normalizedTabKey || !EDITABLE_TAB_KEYS.includes(normalizedTabKey)) return '';
   const identity = getReferenceEntryIdentity(normalizedTabKey, entry, fallbackIndex);
   if (!identity) return `REFERENCE_TAB:${normalizedTabKey}`;
@@ -3302,7 +3470,7 @@ function buildReferenceEntryUndoKey(tabKey, entry, fallbackIndex) {
 }
 
 function buildSerializedReferenceEntrySnapshot(tabKey, identity, entry, selectedIndex) {
-  const normalizedTabKey = String(tabKey || '').trim().toLowerCase();
+  const normalizedTabKey = normalizeEditableTabKey(tabKey);
   const normalizedIdentity = String(identity || '').trim();
   if (!normalizedTabKey || !normalizedIdentity || !entry) return 'null';
   return {
@@ -3343,7 +3511,7 @@ function buildUnitReorderUndoSnapshot() {
 }
 
 function buildSectionItemUndoKey(tabKey, section, fallbackIndex) {
-  const normalizedTabKey = String(tabKey || '').trim().toLowerCase();
+  const normalizedTabKey = normalizeEditableTabKey(tabKey);
   if (!normalizedTabKey || !EDITABLE_TAB_KEYS.includes(normalizedTabKey) || !section) return '';
   const sectionName = Array.isArray(section && section.fields) ? String(getFieldValue(section, 'name') || '').trim() : '';
   if (sectionName) return `SECTION_ITEM:${normalizedTabKey}:name:${sectionName}`;
@@ -3368,7 +3536,7 @@ function buildSectionFieldEditSessionKey(section, fieldKey, itemIndex = null) {
 
 function findSectionUndoLocation(section) {
   if (!section || !state.bundle || !state.bundle.tabs) return null;
-  const activeTabKey = String(state.activeTab || '').trim().toLowerCase();
+  const activeTabKey = normalizeEditableTabKey(state.activeTab);
   const activeTab = activeTabKey ? state.bundle.tabs[activeTabKey] : null;
   if (activeTab && activeTab.model && Array.isArray(activeTab.model.sections)) {
     const activeIndex = activeTab.model.sections.indexOf(section);
@@ -3384,7 +3552,7 @@ function findSectionUndoLocation(section) {
 }
 
 function buildSerializedSectionSnapshot(tabKey, section, selectedIndex) {
-  const normalizedTabKey = String(tabKey || '').trim().toLowerCase();
+  const normalizedTabKey = normalizeEditableTabKey(tabKey);
   if (!normalizedTabKey || !section) return 'null';
   const sectionName = Array.isArray(section && section.fields) ? String(getFieldValue(section, 'name') || '').trim() : '';
   return {
@@ -3404,13 +3572,13 @@ function getUndoSnapshotForKey(key = '') {
   }
   if (normalizedKey.startsWith('RULE_FIELD:')) {
     const parts = normalizedKey.split(':');
-    const tabKey = String(parts[1] || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(parts[1]);
     if (tabKey && EDITABLE_TAB_KEYS.includes(tabKey)) {
       return snapshotSelectedEditableTabs({ tabKeys: [tabKey], scope: `tab:${tabKey}` });
     }
   }
   if (normalizedKey.startsWith('BIQ_FIELD:')) {
-    const tabKey = String(state.activeTab || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(state.activeTab);
     if (tabKey && EDITABLE_TAB_KEYS.includes(tabKey)) {
       return snapshotSelectedEditableTabs({ tabKeys: [tabKey], scope: `tab:${tabKey}` });
     }
@@ -3420,7 +3588,7 @@ function getUndoSnapshotForKey(key = '') {
   }
   if (normalizedKey.startsWith('TECH_UNLOCK_TAB:')) {
     const parts = normalizedKey.split(':');
-    const tabKey = String(parts[1] || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(parts[1]);
     if (tabKey && EDITABLE_TAB_KEYS.includes(tabKey)) {
       return snapshotSelectedEditableTabs({ tabKeys: [tabKey], scope: `tab:${tabKey}` });
     }
@@ -3443,14 +3611,14 @@ function getUndoSnapshotForKey(key = '') {
   }
   if (normalizedKey.startsWith('REFERENCE_TAB:')) {
     const parts = normalizedKey.split(':');
-    const tabKey = String(parts[1] || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(parts[1]);
     if (tabKey && EDITABLE_TAB_KEYS.includes(tabKey)) {
       return snapshotSelectedEditableTabs([tabKey]);
     }
   }
   if (normalizedKey.startsWith('REFERENCE_ENTRY:')) {
     const parts = String(key || '').trim().split(':');
-    const tabKey = String(parts[1] || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(parts[1]);
     const identity = parts.slice(2).join(':').trim();
     const tab = state.bundle && state.bundle.tabs ? state.bundle.tabs[tabKey] : null;
     const entries = tab && Array.isArray(tab.entries) ? tab.entries : [];
@@ -3467,7 +3635,7 @@ function getUndoSnapshotForKey(key = '') {
   }
   if (normalizedKey.startsWith('SECTION_ITEM:')) {
     const parts = String(key || '').trim().split(':');
-    const tabKey = String(parts[1] || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(parts[1]);
     const mode = String(parts[2] || '').trim().toLowerCase();
     const rawValue = parts.slice(3).join(':').trim();
     const tab = state.bundle && state.bundle.tabs ? state.bundle.tabs[tabKey] : null;
@@ -3490,7 +3658,7 @@ function getUndoSnapshotForKey(key = '') {
   }
   if (normalizedKey.startsWith('SECTION_TAB:')) {
     const parts = String(key || '').trim().split(':');
-    const tabKey = String(parts[1] || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(parts[1]);
     if (tabKey && EDITABLE_TAB_KEYS.includes(tabKey)) {
       return snapshotSelectedEditableTabs({ tabKeys: [tabKey], scope: `section:${tabKey}` });
     }
@@ -3504,11 +3672,11 @@ function getUndoSnapshotForKey(key = '') {
 
 function getUndoSnapshotScope(snapshot) {
   if (snapshot && typeof snapshot === 'object' && snapshot.kind === 'serialized-reference-entry') {
-    const tabKey = String(snapshot.tabKey || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(snapshot.tabKey);
     return tabKey ? `reference:${tabKey}` : 'reference';
   }
   if (snapshot && typeof snapshot === 'object' && snapshot.kind === 'serialized-section-item') {
-    const tabKey = String(snapshot.tabKey || '').trim().toLowerCase();
+    const tabKey = normalizeEditableTabKey(snapshot.tabKey);
     return tabKey ? `section:${tabKey}` : 'section';
   }
   if (snapshot && typeof snapshot === 'object' && snapshot.kind === 'serialized-partial-tabs') {
@@ -3554,7 +3722,7 @@ function findLatestUndoSnapshotIndex(predicate) {
 
 function getLatestScopedUndoSnapshot(scope) {
   const normalizedScope = String(scope || '').trim().toLowerCase();
-  const idx = findLatestUndoSnapshotIndex((entry) => getUndoSnapshotScope(entry) === normalizedScope);
+  const idx = findLatestUndoSnapshotIndex((entry) => String(getUndoSnapshotScope(entry) || '').toLowerCase() === normalizedScope);
   return idx >= 0 ? state.undoHistory[idx] : null;
 }
 
@@ -4162,7 +4330,7 @@ function scheduleDirtyUiRefresh(reason = '') {
 }
 
 function setDirty(next, options = {}) {
-  markFilesReadEntriesDirty();
+  resetFilesReadPreviewWrites();
   if (state.isRendering || !state.trackDirty || state.suppressDirtyUntilInteraction) return;
   const knownDirtyTab = next
     ? String(options && options.knownDirtyTab || '').trim().toLowerCase()
@@ -4981,7 +5149,7 @@ function recomputeDirtyStateFromBundle() {
 }
 
 function recomputeDirtyStateForSerializedReferenceEntrySnapshot(snapshot) {
-  const tabKey = String(snapshot && snapshot.tabKey || '').trim().toLowerCase();
+  const tabKey = normalizeEditableTabKey(snapshot && snapshot.tabKey);
   if (!tabKey || !state.bundle || !state.bundle.tabs) return false;
   const tab = state.bundle.tabs[tabKey];
   if (!tab || tab.type !== 'reference' || !Array.isArray(tab.entries)) return false;
@@ -5037,7 +5205,7 @@ function recomputeDirtyStateForScopedBaseSnapshot(snapshot) {
 function recomputeDirtyStateForScopedSectionTabSnapshot(snapshot) {
   if (!isScopedSectionTabUndoSnapshot(snapshot) || !state.bundle || !state.bundle.tabs) return false;
   const scope = String(snapshot.scope || '').trim().toLowerCase();
-  const tabKey = scope.slice('section:'.length).trim();
+  const tabKey = normalizeEditableTabKey(scope.slice('section:'.length).trim());
   if (!tabKey || !state.bundle.tabs[tabKey]) return false;
   setTabDirtyCount(tabKey, computeTabDirtyCount(tabKey));
   state.isDirty = Object.keys(state.dirtyTabCounts || {}).length > 0;
@@ -5047,7 +5215,7 @@ function recomputeDirtyStateForScopedSectionTabSnapshot(snapshot) {
 function recomputeDirtyStateForScopedTabSnapshot(snapshot) {
   if (!isScopedTabUndoSnapshot(snapshot) || !state.bundle || !state.bundle.tabs) return false;
   const scope = String(snapshot.scope || '').trim().toLowerCase();
-  const tabKey = scope.slice('tab:'.length).trim();
+  const tabKey = normalizeEditableTabKey(scope.slice('tab:'.length).trim());
   if (!tabKey || !state.bundle.tabs[tabKey]) return false;
   const tab = state.bundle.tabs[tabKey];
   if (tab && tab.type === 'reference' && Array.isArray(tab.entries)) {
@@ -5061,7 +5229,7 @@ function recomputeDirtyStateForScopedTabSnapshot(snapshot) {
 }
 
 function applySerializedSectionSnapshotToTabs(mergedTabs, snapshot) {
-  const tabKey = String(snapshot && snapshot.tabKey || '').trim().toLowerCase();
+  const tabKey = normalizeEditableTabKey(snapshot && snapshot.tabKey);
   const currentTab = mergedTabs && mergedTabs[tabKey];
   const currentSections = currentTab && currentTab.model && Array.isArray(currentTab.model.sections) ? currentTab.model.sections : null;
   if (!tabKey || !currentSections) return false;
@@ -5093,7 +5261,7 @@ function applySerializedSectionSnapshotToTabs(mergedTabs, snapshot) {
 }
 
 function recomputeDirtyStateForSerializedSectionSnapshot(snapshot) {
-  const tabKey = String(snapshot && snapshot.tabKey || '').trim().toLowerCase();
+  const tabKey = normalizeEditableTabKey(snapshot && snapshot.tabKey);
   if (!tabKey || !state.bundle || !state.bundle.tabs) return false;
   const tab = state.bundle.tabs[tabKey];
   const sections = tab && tab.model && Array.isArray(tab.model.sections) ? tab.model.sections : null;
@@ -5404,6 +5572,23 @@ function getLoadAuditAllMessages(tabKey) {
   return lines;
 }
 
+function getLoadAuditAllEntries(tabKey) {
+  const entriesOut = [...getLoadAuditGeneralEntries(tabKey)];
+  const tabState = getLoadAuditTabState(tabKey);
+  if (tabState && tabState.sections) {
+    Object.keys(tabState.sections)
+      .sort((a, b) => Number(a) - Number(b))
+      .forEach((sectionIndex) => {
+        const entries = tabState.sections[sectionIndex];
+        if (!Array.isArray(entries)) return;
+        entries.forEach((entry) => {
+          if (entry && typeof entry === 'object') entriesOut.push(entry);
+        });
+      });
+  }
+  return entriesOut;
+}
+
 function getLoadAuditBadgeCount(tabKey) {
   const tabState = getLoadAuditTabState(tabKey);
   if (!tabState) return 0;
@@ -5554,7 +5739,7 @@ function applyDirtyBadgeToTabButton(button, key, tab) {
         warningCount
       );
     }
-  } else if (shouldRunQualityChecks() && (key === 'base' || key === 'naturalWonders')) {
+  } else if (shouldRunQualityChecks() && (key === 'base' || key === 'naturalWonders' || key === 'animations')) {
     const warningCount = getLoadAuditBadgeCount(key);
     if (warningCount > 0) {
       appendWarningCountBadge(
@@ -7865,6 +8050,47 @@ function navigateWithHistory(mutateState, renderOptions = { preserveTabScroll: t
   }
 }
 
+function focusRenderedBaseRowByKey(rawKey) {
+  const key = String(rawKey || '').trim().toLowerCase();
+  if (!key || !state.baseRowElementsByKey) return false;
+  const rowEl = state.baseRowElementsByKey.get(key);
+  if (!rowEl) return false;
+  if (typeof rowEl._ensureBaseInputMounted === 'function') {
+    rowEl._ensureBaseInputMounted();
+  }
+  window.requestAnimationFrame(() => {
+    const scroller = el.tabContent;
+    const scrollerRect = scroller ? scroller.getBoundingClientRect() : null;
+    const rowRect = rowEl.getBoundingClientRect();
+    if (scroller && scrollerRect) {
+      const currentTop = scroller.scrollTop || 0;
+      const targetTop = Math.max(0, currentTop + (rowRect.top - scrollerRect.top) - Math.max(24, (scrollerRect.height * 0.35)));
+      scroller.scrollTo({ top: targetTop, behavior: 'smooth' });
+    } else {
+      rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    rowEl.classList.add('nav-jump-highlight');
+    window.clearTimeout(rowEl._fieldFocusPulseTimer);
+    rowEl._fieldFocusPulseTimer = window.setTimeout(() => {
+      rowEl.classList.remove('nav-jump-highlight');
+    }, 1500);
+  });
+  return true;
+}
+
+function navigateToBaseField(rawKey, options = {}) {
+  const key = String(rawKey || '').trim();
+  if (!key) return;
+  const filterValue = String(options.filterValue == null ? key : options.filterValue);
+  navigateWithHistory(() => {
+    state.activeTab = 'base';
+    state.baseFilter = filterValue;
+  }, { preserveTabScroll: false });
+  window.requestAnimationFrame(() => {
+    focusRenderedBaseRowByKey(key);
+  });
+}
+
 function normalizeSearchText(value) {
   return String(value || '')
     .toLowerCase()
@@ -8128,10 +8354,7 @@ function collectGlobalSearchItems() {
           subtitle: rawKey,
           search: `${tabTitle} c3x base field setting ${friendlyName} ${rawKey} ${docs} ${rowValue} ${releaseLabel}`,
           action: () => {
-            navigateWithHistory(() => {
-              state.activeTab = tabKey;
-              state.baseFilter = rawKey;
-            }, { preserveTabScroll: false });
+            navigateToBaseField(rawKey);
           }
         });
       });
@@ -8257,11 +8480,16 @@ function renderGlobalSearchResults() {
     row.type = 'button';
     row.className = 'global-search-row';
     if (idx === activeIndex) row.classList.add('active');
-    row.innerHTML = `
-      <span class="global-search-row-kind">${result.kind || 'Result'}</span>
-      <span class="global-search-row-title">${result.title || ''}</span>
-      <span class="global-search-row-sub">${result.subtitle || ''}</span>
-    `;
+    const kind = document.createElement('span');
+    kind.className = 'global-search-row-kind';
+    kind.textContent = result.kind || 'Result';
+    const title = document.createElement('span');
+    title.className = 'global-search-row-title';
+    title.textContent = result.title || '';
+    const subtitle = document.createElement('span');
+    subtitle.className = 'global-search-row-sub';
+    subtitle.textContent = result.subtitle || '';
+    row.append(kind, title, subtitle);
     row.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -9033,6 +9261,359 @@ function serializeNameAmountItems(items) {
   return serializeStructuredEntries(entries);
 }
 
+function parseUnitTypeTagItems(value) {
+  return parseDelimitedStructuredEntries(value).map((item) => {
+    const i = item.indexOf(':');
+    if (i < 0) return { name: normalizeConfigToken(item), units: [] };
+    return {
+      name: normalizeConfigToken(item.slice(0, i)),
+      units: parseBracketedOptionTokens(item.slice(i + 1))
+    };
+  });
+}
+
+function serializeUnitTypeTagItems(items) {
+  const entries = (Array.isArray(items) ? items : [])
+    .map((it) => ({
+      name: String(it && it.name || '').trim(),
+      units: (Array.isArray(it && it.units) ? it.units : [])
+        .map((unit) => String(unit || '').trim())
+        .filter(Boolean)
+    }))
+    .filter((it) => it.name && it.units.length > 0)
+    .map((it) => `${quoteConfigToken(it.name)}: ${it.units.map((unit) => quoteConfigToken(unit)).join(' ')}`);
+  return serializeStructuredEntries(entries);
+}
+
+function getBaseRowValueForRenderer(key) {
+  const rows = state.bundle && state.bundle.tabs && state.bundle.tabs.base && Array.isArray(state.bundle.tabs.base.rows)
+    ? state.bundle.tabs.base.rows
+    : [];
+  const match = rows.find((row) => String(row && row.key || '').trim() === String(key || '').trim());
+  return match ? String(match.value || '').trim() : '';
+}
+
+function getUnitTypeTagOptions() {
+  return parseUnitTypeTagItems(getBaseRowValueForRenderer('unit_type_tags'))
+    .map((item) => normalizeConfigToken(item && item.name))
+    .filter(Boolean)
+    .map((name) => ({
+      value: name,
+      label: name,
+      displayLabel: `${name} (tag)`,
+      entry: null,
+      group: 'unit-type-tag'
+    }))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), 'en', { sensitivity: 'base' }));
+}
+
+function getUnitOrTagReferenceOptions() {
+  return [
+    ...getUnitTypeTagOptions(),
+    ...getNamedReferenceOptionsForTab('units')
+  ];
+}
+
+function quoteCounterMatchToken(value) {
+  const normalized = normalizeConfigToken(value);
+  if (normalized === '*') return '"*"';
+  return quoteConfigToken(normalized);
+}
+
+function makeCounterMatchOptions(currentValue = '') {
+  const current = normalizeConfigToken(currentValue);
+  const tagOpts = getUnitTypeTagOptions();
+  const unitOpts = getNamedReferenceOptionsForTab('units');
+  const options = [
+    { value: '*', label: 'Any (*)', displayLabel: 'Any (*)', entry: null, group: 'special' },
+    ...(tagOpts.length > 0 ? [{ separator: true, label: 'Unit Type Tags' }] : []),
+    ...tagOpts,
+    ...(unitOpts.length > 0 ? [{ separator: true, label: 'Units' }] : []),
+    ...unitOpts
+  ];
+  if (current && !options.some((opt) => !opt.separator && normalizeConfigToken(opt.value) === current)) {
+    options.unshift({ value: current, label: current, entry: null });
+  }
+  return options;
+}
+
+function isCounterRuleOptionToken(token) {
+  const t = String(token || '').trim();
+  return [
+    'in-city',
+    'ignore-defensive-bonuses',
+    'terrain',
+    'district',
+    'self-exp',
+    'enemy-exp',
+    ...C3X_COUNTER_EFFECT_FIELDS.map((field) => field.token)
+  ].includes(t);
+}
+
+function parseCounterRules(value) {
+  return parseDelimitedStructuredEntries(value).map((entry) => {
+    const tokens = tokenizeWhitespacePreservingQuotes(entry).map((token) => normalizeConfigToken(token)).filter(Boolean);
+    const rule = {
+      attacker: tokens[0] || '',
+      defender: tokens[2] || '',
+      onlyInCity: false,
+      ignoreDefensiveBonuses: false,
+      terrain: '',
+      district: '',
+      selfExp: '',
+      enemyExp: '',
+      selfAtk: '',
+      selfDef: '',
+      enemyAtk: '',
+      enemyDef: '',
+      selfBombard: '',
+      enemyBombard: ''
+    };
+    if (tokens.length < 3 || tokens[1] !== 'vs') {
+      rule.raw = entry;
+      return rule;
+    }
+    let i = 3;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      const effect = C3X_COUNTER_EFFECT_FIELDS.find((field) => field.token === token);
+      if (effect) {
+        rule[effect.key] = tokens[i + 1] || '';
+        i += 2;
+        continue;
+      }
+      if (token === 'in-city') {
+        rule.onlyInCity = true;
+        i += 1;
+        continue;
+      }
+      if (token === 'ignore-defensive-bonuses') {
+        rule.ignoreDefensiveBonuses = true;
+        i += 1;
+        continue;
+      }
+      if (token === 'terrain') {
+        rule.terrain = tokens[i + 1] || '';
+        i += 2;
+        continue;
+      }
+      if (token === 'district') {
+        rule.district = tokens[i + 1] || '';
+        i += 2;
+        continue;
+      }
+      if (token === 'self-exp' || token === 'enemy-exp') {
+        const values = [];
+        i += 1;
+        while (i < tokens.length && !isCounterRuleOptionToken(tokens[i])) {
+          values.push(tokens[i]);
+          i += 1;
+        }
+        rule[token === 'self-exp' ? 'selfExp' : 'enemyExp'] = values.join(' ');
+        continue;
+      }
+      rule.raw = entry;
+      break;
+    }
+    return rule;
+  });
+}
+
+function serializeCounterRules(items) {
+  const entries = (Array.isArray(items) ? items : [])
+    .map((rule) => {
+      if (rule && rule.raw && (!rule.attacker || !rule.defender)) return String(rule.raw || '').trim();
+      const attacker = normalizeConfigToken(rule && rule.attacker);
+      const defender = normalizeConfigToken(rule && rule.defender);
+      if (!attacker || !defender) return '';
+      const parts = [quoteCounterMatchToken(attacker), 'vs', quoteCounterMatchToken(defender)];
+      C3X_COUNTER_EFFECT_FIELDS.forEach((field) => {
+        const value = String(rule && rule[field.key] || '').trim();
+        if (value) parts.push(field.token, value);
+      });
+      if (rule && rule.onlyInCity) parts.push('in-city');
+      if (rule && rule.ignoreDefensiveBonuses) parts.push('ignore-defensive-bonuses');
+      const terrain = normalizeConfigToken(rule && rule.terrain);
+      if (terrain) parts.push('terrain', quoteConfigToken(terrain));
+      const district = normalizeConfigToken(rule && rule.district);
+      if (district) parts.push('district', quoteConfigToken(district));
+      const selfExp = tokenizeWhitespacePreservingQuotes(rule && rule.selfExp).map((token) => normalizeConfigToken(token)).filter(Boolean);
+      if (selfExp.length > 0) parts.push('self-exp', ...selfExp.map((token) => quoteConfigToken(token)));
+      const enemyExp = tokenizeWhitespacePreservingQuotes(rule && rule.enemyExp).map((token) => normalizeConfigToken(token)).filter(Boolean);
+      if (enemyExp.length > 0) parts.push('enemy-exp', ...enemyExp.map((token) => quoteConfigToken(token)));
+      return parts.join(' ');
+    })
+    .filter(Boolean);
+  return serializeStructuredEntries(entries);
+}
+
+function parseFixedVisibilityArray(value, kind) {
+  const tokens = parseBracketedOptionTokens(value);
+  const defaults = C3X_VISIBILITY_TERRAIN_COLUMNS.map(() => (kind === 'boolean' ? 'false' : '0'));
+  const values = defaults.map((fallback, idx) => {
+    const token = String(tokens[idx] == null ? fallback : tokens[idx]).trim();
+    if (kind === 'boolean') return /^(true|1)$/i.test(token) ? 'true' : 'false';
+    return token;
+  });
+  return values;
+}
+
+function serializeFixedVisibilityArray(values, kind) {
+  const normalized = C3X_VISIBILITY_TERRAIN_COLUMNS.map((_, idx) => {
+    const raw = String(Array.isArray(values) && values[idx] != null ? values[idx] : '').trim();
+    if (kind === 'boolean') return /^(true|1)$/i.test(raw) ? 'true' : 'false';
+    return raw || '0';
+  });
+  return `[${normalized.join(', ')}]`;
+}
+
+function parseUnitVisibilityRules(value) {
+  return parseDelimitedStructuredEntries(value).map((entry) => {
+    const i = entry.indexOf(':');
+    if (i < 0) return { targets: [normalizeConfigToken(entry)], baseVisibility: '', terrainBonusMultiplier: '', fortificationBonus: '', fortificationMode: 'when-fortified' };
+    const targetText = entry.slice(0, i).trim();
+    const rhs = entry.slice(i + 1).trim();
+    const targets = parseBracketedOptionTokens(targetText);
+    const rule = {
+      targets: targets.length > 0 ? targets : [normalizeConfigToken(targetText)].filter(Boolean),
+      baseVisibility: '',
+      terrainBonusMultiplier: '',
+      fortificationBonus: '',
+      fortificationMode: 'when-fortified'
+    };
+    const tokens = tokenizeWhitespacePreservingQuotes(rhs)
+      .map((token) => normalizeConfigToken(token))
+      .filter((token) => token && token !== '+');
+    for (let idx = 0; idx < tokens.length; idx += 1) {
+      const num = tokens[idx];
+      const modifier = tokens[idx + 1] || '';
+      if (modifier === 'times-bonus') {
+        rule.terrainBonusMultiplier = num;
+        idx += 1;
+      } else if (modifier === 'when-fortified' || modifier === 'when-fortified-same-continent') {
+        rule.fortificationBonus = num;
+        rule.fortificationMode = modifier;
+        idx += 1;
+      } else {
+        rule.baseVisibility = num;
+      }
+    }
+    return rule;
+  });
+}
+
+function serializeUnitVisibilityRules(items) {
+  const entries = (Array.isArray(items) ? items : [])
+    .map((rule) => {
+      const targets = (Array.isArray(rule && rule.targets) ? rule.targets : [])
+        .map((target) => normalizeConfigToken(target))
+        .filter(Boolean);
+      if (targets.length === 0) return '';
+      const targetText = targets.map((target) => quoteConfigToken(target)).join(' ');
+      const parts = [];
+      const base = String(rule && rule.baseVisibility || '').trim();
+      if (base) parts.push(base);
+      const multiplier = String(rule && rule.terrainBonusMultiplier || '').trim();
+      if (multiplier) parts.push(`${multiplier} times-bonus`);
+      const fort = String(rule && rule.fortificationBonus || '').trim();
+      if (fort) {
+        const mode = String(rule && rule.fortificationMode || '').trim() === 'when-fortified-same-continent'
+          ? 'when-fortified-same-continent'
+          : 'when-fortified';
+        parts.push(`${fort} ${mode}`);
+      }
+      return `${targetText}: ${parts.length > 0 ? parts.join(' + ') : '1'}`;
+    })
+    .filter(Boolean);
+  return serializeStructuredEntries(entries);
+}
+
+function getCounterRuleDistrictOptions() {
+  const sections = state.bundle && state.bundle.tabs && state.bundle.tabs.districts && state.bundle.tabs.districts.model && Array.isArray(state.bundle.tabs.districts.model.sections)
+    ? state.bundle.tabs.districts.model.sections
+    : [];
+  return sections.map((section, index) => {
+    const internalName = normalizeConfigToken(getFieldValue(section, 'name'));
+    if (!internalName) return null;
+    const display = getDistrictSectionDisplay(section, index);
+    return {
+      value: internalName,
+      label: display.secondary ? `${display.primary} (${display.secondary})` : display.primary,
+      displayLabel: display.primary || internalName,
+      entry: { section, index }
+    };
+  }).filter(Boolean);
+}
+
+function makeCounterRuleTerrainPicker(currentValue, onSelect) {
+  const current = normalizeConfigToken(currentValue);
+  return createReferencePicker({
+    options: C3X_COUNTER_TERRAIN_OPTIONS.map((opt) => ({
+      value: opt.value,
+      label: opt.label,
+      displayLabel: opt.label,
+      previewKey: opt.previewKey || opt.value
+    })),
+    targetTabKey: '',
+    currentValue: current || '-1',
+    searchPlaceholder: 'Search terrain...',
+    noneLabel: 'Any terrain',
+    renderOptionThumb: ({ holder, option }) => {
+      if (!holder || !option) return false;
+      holder.innerHTML = '';
+      const preview = makeTerrainOptionPreviewIcon(String(option.previewKey || option.value || ''));
+      if (preview) holder.appendChild(preview);
+      return true;
+    },
+    onSelect
+  });
+}
+
+function makeCounterRuleDistrictPicker(currentValue, onSelect) {
+  const current = normalizeConfigToken(currentValue);
+  return createReferencePicker({
+    options: getCounterRuleDistrictOptions(),
+    targetTabKey: '',
+    currentValue: current || '-1',
+    searchPlaceholder: 'Search districts...',
+    noneLabel: 'Any district',
+    thumbClassName: 'district-entry-thumb',
+    renderOptionThumb: ({ holder, option }) => {
+      if (!holder || !option || !option.entry || !option.entry.section) return false;
+      loadDistrictRepresentativePreview(option.entry.section, holder, 14);
+      return true;
+    },
+    onSelect
+  });
+}
+
+function makeCounterRuleExperienceSelect(value, onSelect) {
+  const normalized = String(value || '').trim();
+  const select = document.createElement('select');
+  select.className = 'c3x-counter-experience-select';
+  const options = [
+    { value: '', label: 'Any experience' },
+    ...C3X_COUNTER_EXPERIENCE_OPTIONS
+  ];
+  const normalizedKnown = normalizeConfigToken(normalized);
+  if (normalizedKnown && !options.some((opt) => normalizeConfigToken(opt.value) === normalizedKnown)) {
+    options.push({ value: normalized, label: normalized });
+  }
+  options.forEach((opt) => {
+    const option = document.createElement('option');
+    option.value = String(opt.value || '');
+    option.textContent = opt.label;
+    select.appendChild(option);
+  });
+  select.value = normalized;
+  if (select.value !== normalized) select.value = normalizedKnown;
+  if (select.value !== normalized && select.value !== normalizedKnown) select.value = '';
+  select.addEventListener('change', () => {
+    if (onSelect) onSelect(select.value);
+  });
+  return select;
+}
+
 function parseBuildingPrereqItems(value) {
   return parseDelimitedStructuredEntries(value).map((item) => {
     const i = item.indexOf(':');
@@ -9452,12 +10033,14 @@ function makeNamedListTokenEditor(config) {
     }
     const value = normalizeConfigToken(opt.value);
     if (!value) return;
-    pickerOptions.push({
+    const specialOption = {
       value,
-      label: String(opt.label || value),
+      label: String(opt.displayLabel || opt.label || value),
       displayLabel: String(opt.displayLabel || opt.label || value),
       special: true
-    });
+    };
+    optionByValue.set(value, specialOption);
+    pickerOptions.push(specialOption);
   });
   pickerOptions.push(...normalizedOptions);
 
@@ -9508,8 +10091,8 @@ function makeNamedListTokenEditor(config) {
     options: pickerOptions,
     targetTabKey: tabKey,
     currentValue: '-1',
-    searchPlaceholder: `Add ${toFriendlyKey(tabKey).replace(/s$/, '')}...`,
-    noneLabel: 'Add item...',
+    searchPlaceholder: String(cfg.searchPlaceholder || `Add ${toFriendlyKey(tabKey).replace(/s$/, '')}...`),
+    noneLabel: String(cfg.noneLabel || 'Add item...'),
     resetAfterSelect: true,
     readOnly,
     onSelect: (next) => {
@@ -9728,6 +10311,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const editor = makeNamedListPickerEditor({
       tabKey: refTabKey,
       values: initial,
+      options: refTabKey === 'units' ? getUnitOrTagReferenceOptions() : getNamedReferenceOptionsForTab(refTabKey),
       onValuesChange: (values) => onChange(serializeQuotedWhitespaceStructuredEntries(values))
     });
     return editor;
@@ -9841,6 +10425,388 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     return { wrap, addBtn, api };
   };
 
+  if (row.key === 'unit_type_tags') {
+    let items = parseUnitTypeTagItems(row.value);
+    if (items.length === 0) items = [{ name: '', units: [] }];
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ name: '', units: [] }),
+      addLabel: 'Add Tag',
+      lazyItemMount: true,
+      eagerItemCount: 6,
+      itemPlaceholderMinHeight: 106,
+      buildItemNode: (item, api) => {
+        const line = document.createElement('div');
+        line.className = 'structured-card';
+        const groupInput = document.createElement('input');
+        groupInput.placeholder = 'Tag name';
+        groupInput.value = String(item.name || '');
+        wireBaseGroupedUndo(groupInput, () => serializeUnitTypeTagItems(api.items));
+        groupInput.addEventListener('input', () => {
+          item.name = groupInput.value;
+          onChange(serializeUnitTypeTagItems(api.items), { captureUndo: false });
+        });
+        line.appendChild(groupInput);
+
+        const tagOptions = getUnitTypeTagOptions().filter((opt) => normalizeConfigToken(opt.value) !== normalizeConfigToken(item.name));
+        const unitOptions = getNamedReferenceOptionsForTab('units');
+        const members = makeNamedListTokenEditor({
+          tabKey: 'units',
+          values: Array.isArray(item.units) ? item.units : [],
+          options: [
+            ...(tagOptions.length > 0 ? [{ separator: true, label: 'Tags' }] : []),
+            ...tagOptions,
+            ...(unitOptions.length > 0 ? [{ separator: true, label: 'Units' }] : []),
+            ...unitOptions
+          ],
+          searchPlaceholder: 'Add unit or tag...',
+          onValuesChange: (values) => {
+            item.units = values;
+            onChange(serializeUnitTypeTagItems(api.items));
+          }
+        });
+        line.appendChild(members);
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        withRemoveIcon(del, ' Remove');
+        del.addEventListener('click', () => {
+          api.removeItem(item);
+          onChange(serializeUnitTypeTagItems(api.items));
+        });
+        line.appendChild(del);
+        return line;
+      }
+    });
+    return editor.wrap;
+  }
+
+  if (row.key === 'counter_rules') {
+    let items = parseCounterRules(row.value);
+    items.forEach((item) => {
+      if (item && !item.raw && !normalizeConfigToken(item.defender)) item.defender = '*';
+    });
+    if (items.length === 0) items = [{ attacker: '*', defender: '*', onlyInCity: false, ignoreDefensiveBonuses: false }];
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ attacker: '*', defender: '*', onlyInCity: false, ignoreDefensiveBonuses: false }),
+      addLabel: 'Add Rule',
+      lazyItemMount: true,
+      eagerItemCount: 4,
+      itemPlaceholderMinHeight: 248,
+      buildItemNode: (item, api) => {
+        const block = document.createElement('div');
+        block.className = 'structured-card c3x-counter-rule-card';
+        const makeLabeledControl = (labelText, control, className = '') => {
+          const wrap = document.createElement('div');
+          wrap.className = `c3x-counter-field${className ? ` ${className}` : ''}`;
+          const label = document.createElement('span');
+          label.className = 'field-label';
+          label.textContent = labelText;
+          wrap.appendChild(label);
+          wrap.appendChild(control);
+          return wrap;
+        };
+        const makeSectionTitle = (text) => {
+          const title = document.createElement('div');
+          title.className = 'c3x-counter-section-title';
+          title.textContent = text;
+          return title;
+        };
+        const makeEffectInput = (key, labelText, ariaPrefix) => {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.setAttribute('aria-label', `${ariaPrefix} ${labelText}`);
+          input.value = String(item[key] || '');
+          wireBaseGroupedUndo(input, () => serializeCounterRules(api.items));
+          input.addEventListener('input', () => {
+            item[key] = input.value;
+            onChange(serializeCounterRules(api.items), { captureUndo: false });
+          });
+          return makeLabeledControl(labelText, input);
+        };
+
+        const matchRow = document.createElement('div');
+        matchRow.className = 'c3x-counter-match';
+        matchRow.appendChild(makeSectionTitle('Match'));
+        const matchGrid = document.createElement('div');
+        matchGrid.className = 'c3x-counter-match-grid';
+        const attacker = createReferencePicker({
+          options: makeCounterMatchOptions(item.attacker || '*'),
+          targetTabKey: 'units',
+          currentValue: item.attacker || '*',
+          searchPlaceholder: 'Friendly unit or tag...',
+          noneLabel: 'Any (*)',
+          includeNone: false,
+          onSelect: (next) => {
+            item.attacker = normalizeConfigToken(next) || '*';
+            onChange(serializeCounterRules(api.items));
+          }
+        });
+        matchGrid.appendChild(makeLabeledControl('Friendly unit/tag', attacker));
+        const vs = document.createElement('div');
+        vs.className = 'c3x-counter-vs';
+        vs.textContent = 'vs.';
+        matchGrid.appendChild(vs);
+        const defender = createReferencePicker({
+          options: makeCounterMatchOptions(item.defender || '*'),
+          targetTabKey: 'units',
+          currentValue: item.defender || '*',
+          searchPlaceholder: 'Enemy unit or tag...',
+          noneLabel: 'Any (*)',
+          includeNone: false,
+          onSelect: (next) => {
+            item.defender = normalizeConfigToken(next) || '*';
+            onChange(serializeCounterRules(api.items));
+          }
+        });
+        matchGrid.appendChild(makeLabeledControl('Enemy unit/tag', defender));
+        matchRow.appendChild(matchGrid);
+        block.appendChild(matchRow);
+
+        const effects = document.createElement('div');
+        effects.className = 'c3x-counter-effects';
+        [
+          ['Friendly modifiers', 'Friendly', [['selfAtk', 'Attack %'], ['selfDef', 'Defense %'], ['selfBombard', 'Bombard %']]],
+          ['Enemy modifiers', 'Enemy', [['enemyAtk', 'Attack %'], ['enemyDef', 'Defense %'], ['enemyBombard', 'Bombard %']]]
+        ].forEach(([titleText, ariaPrefix, fields]) => {
+          const group = document.createElement('div');
+          group.className = 'c3x-counter-effect-group';
+          group.appendChild(makeSectionTitle(titleText));
+          const grid = document.createElement('div');
+          grid.className = 'c3x-counter-effect-grid';
+          fields.forEach(([key, labelText]) => {
+            grid.appendChild(makeEffectInput(key, labelText, ariaPrefix));
+          });
+          group.appendChild(grid);
+          effects.appendChild(group);
+        });
+        block.appendChild(effects);
+
+        const conditions = document.createElement('div');
+        conditions.className = 'c3x-counter-conditions';
+        conditions.appendChild(makeSectionTitle('Optional conditions'));
+        const conditionGrid = document.createElement('div');
+        conditionGrid.className = 'c3x-counter-conditions-grid';
+        const terrain = makeCounterRuleTerrainPicker(item.terrain, (next) => {
+          const normalized = normalizeConfigToken(next);
+          item.terrain = normalized === '-1' ? '' : normalized;
+          onChange(serializeCounterRules(api.items));
+        });
+        conditionGrid.appendChild(makeLabeledControl('Only on terrain', terrain));
+        const district = makeCounterRuleDistrictPicker(item.district, (next) => {
+          const normalized = normalizeConfigToken(next);
+          item.district = normalized === '-1' ? '' : normalized;
+          onChange(serializeCounterRules(api.items));
+        });
+        conditionGrid.appendChild(makeLabeledControl('Only in district', district));
+        const selfExp = makeCounterRuleExperienceSelect(item.selfExp, (next) => {
+          item.selfExp = normalizeConfigToken(next);
+          onChange(serializeCounterRules(api.items));
+        });
+        conditionGrid.appendChild(makeLabeledControl('Friendly experience', selfExp));
+        const enemyExp = makeCounterRuleExperienceSelect(item.enemyExp, (next) => {
+          item.enemyExp = normalizeConfigToken(next);
+          onChange(serializeCounterRules(api.items));
+        });
+        conditionGrid.appendChild(makeLabeledControl('Enemy experience', enemyExp));
+        conditions.appendChild(conditionGrid);
+
+        const toggles = document.createElement('div');
+        toggles.className = 'segmented-multi-list c3x-counter-condition-toggles';
+        [
+          ['onlyInCity', 'In City'],
+          ['ignoreDefensiveBonuses', 'Ignore Defensive Bonuses']
+        ].forEach(([key, label]) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'segmented-multi-btn';
+          btn.classList.toggle('active', !!item[key]);
+          btn.textContent = label;
+          btn.addEventListener('click', () => {
+            item[key] = !item[key];
+            btn.classList.toggle('active', !!item[key]);
+            onChange(serializeCounterRules(api.items));
+          });
+          toggles.appendChild(btn);
+        });
+        conditions.appendChild(toggles);
+        block.appendChild(conditions);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'c3x-counter-remove';
+        withRemoveIcon(del, ' Remove');
+        del.addEventListener('click', () => {
+          api.removeItem(item);
+          onChange(serializeCounterRules(api.items));
+        });
+        block.appendChild(del);
+        return block;
+      }
+    });
+    return editor.wrap;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(C3X_VISIBILITY_ARRAY_KEYS, row.key)) {
+    const kind = C3X_VISIBILITY_ARRAY_KEYS[row.key];
+    const values = parseFixedVisibilityArray(row.value, kind);
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'c3x-visibility-array-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'c3x-visibility-array-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const tbody = document.createElement('tbody');
+    const valueRow = document.createElement('tr');
+    C3X_VISIBILITY_TERRAIN_COLUMNS.forEach((col, idx) => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.title = col.key;
+      const head = document.createElement('span');
+      head.className = 'c3x-visibility-array-head';
+      const thumb = makeTerrainOptionPreviewIcon(col.previewKey || col.key);
+      thumb.classList.add('c3x-visibility-array-thumb');
+      thumb.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.className = 'c3x-visibility-array-label';
+      label.textContent = col.label;
+      head.appendChild(thumb);
+      head.appendChild(label);
+      th.appendChild(head);
+      headRow.appendChild(th);
+
+      const td = document.createElement('td');
+      if (kind === 'boolean') {
+        const boolWrap = document.createElement('label');
+        boolWrap.className = 'bool-toggle compact c3x-visibility-array-toggle';
+        boolWrap.title = col.key;
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = /^(true|1)$/i.test(values[idx]);
+        checkbox.setAttribute('aria-label', `${toFriendlyKey(row.key)} ${col.key}`);
+        wireBaseGroupedUndo(checkbox, () => serializeFixedVisibilityArray(values, kind), { commitOnChange: true });
+        checkbox.addEventListener('change', () => {
+          values[idx] = checkbox.checked ? 'true' : 'false';
+          onChange(serializeFixedVisibilityArray(values, kind));
+        });
+        boolWrap.appendChild(checkbox);
+        td.appendChild(boolWrap);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = values[idx];
+        input.setAttribute('aria-label', `${toFriendlyKey(row.key)} ${col.key}`);
+        input.title = col.key;
+        wireBaseGroupedUndo(input, () => serializeFixedVisibilityArray(values, kind));
+        input.addEventListener('input', () => {
+          values[idx] = input.value;
+          onChange(serializeFixedVisibilityArray(values, kind), { captureUndo: false });
+        });
+        td.appendChild(input);
+      }
+      valueRow.appendChild(td);
+    });
+    thead.appendChild(headRow);
+    tbody.appendChild(valueRow);
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    return tableWrap;
+  }
+
+  if (row.key === 'unit_visibility_rules') {
+    let items = parseUnitVisibilityRules(row.value);
+    if (items.length === 0) items = [{ targets: [], baseVisibility: '', terrainBonusMultiplier: '', fortificationBonus: '', fortificationMode: 'when-fortified' }];
+    const classOptions = C3X_UNIT_VISIBILITY_CLASSES.map((name) => ({ value: name, label: name, displayLabel: `${name} class` }));
+    const editor = buildIncrementalStructuredListEditor({
+      items,
+      createDefaultItem: () => ({ targets: [], baseVisibility: '', terrainBonusMultiplier: '', fortificationBonus: '', fortificationMode: 'when-fortified' }),
+      addLabel: 'Add Rule',
+      lazyItemMount: true,
+      eagerItemCount: 5,
+      itemPlaceholderMinHeight: 150,
+      buildItemNode: (item, api) => {
+        const block = document.createElement('div');
+        block.className = 'structured-card c3x-unit-visibility-rule-card';
+        const targetWrap = document.createElement('div');
+        targetWrap.className = 'c3x-unit-visibility-target-field';
+        const targetLabel = document.createElement('div');
+        targetLabel.className = 'field-label';
+        targetLabel.textContent = 'Applies To';
+        targetWrap.appendChild(targetLabel);
+        const targetEditor = makeNamedListTokenEditor({
+          tabKey: 'units',
+          values: Array.isArray(item.targets) ? item.targets : [],
+          options: getUnitOrTagReferenceOptions(),
+          searchPlaceholder: 'Add class, unit, or tag...',
+          noneLabel: 'Add class, unit, or tag...',
+          specialOptions: [
+            ...classOptions,
+            { separator: true, label: 'Units and Tags' }
+          ],
+          onValuesChange: (values) => {
+            item.targets = values;
+            onChange(serializeUnitVisibilityRules(api.items));
+          }
+        });
+        targetWrap.appendChild(targetEditor);
+        block.appendChild(targetWrap);
+
+        const rowWrap = document.createElement('div');
+        rowWrap.className = 'c3x-unit-visibility-metrics';
+        [
+          ['baseVisibility', 'Base Visibility'],
+          ['terrainBonusMultiplier', 'Height Bonus Multiplier'],
+          ['fortificationBonus', 'Fortified Bonus']
+        ].forEach(([key, labelText]) => {
+          const field = document.createElement('label');
+          field.className = 'c3x-unit-visibility-metric';
+          const label = document.createElement('span');
+          label.className = 'field-label';
+          label.textContent = labelText;
+          field.appendChild(label);
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.placeholder = labelText;
+          input.setAttribute('aria-label', labelText);
+          input.value = String(item[key] || '');
+          wireBaseGroupedUndo(input, () => serializeUnitVisibilityRules(api.items));
+          input.addEventListener('input', () => {
+            item[key] = input.value;
+            onChange(serializeUnitVisibilityRules(api.items), { captureUndo: false });
+          });
+          field.appendChild(input);
+          rowWrap.appendChild(field);
+        });
+        block.appendChild(rowWrap);
+
+        const modeWrap = document.createElement('div');
+        modeWrap.className = 'c3x-unit-visibility-mode-field';
+        const modeLabel = document.createElement('div');
+        modeLabel.className = 'field-label';
+        modeLabel.textContent = 'Fortified Bonus Mode';
+        modeWrap.appendChild(modeLabel);
+        const mode = makeSegmentedChoiceControl(['when-fortified', 'when-fortified-same-continent'], item.fortificationMode || 'when-fortified', (next) => {
+          item.fortificationMode = next;
+          onChange(serializeUnitVisibilityRules(api.items));
+        });
+        modeWrap.appendChild(mode);
+        block.appendChild(modeWrap);
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        withRemoveIcon(del, ' Remove');
+        del.addEventListener('click', () => {
+          api.removeItem(item);
+          onChange(serializeUnitVisibilityRules(api.items));
+        });
+        block.appendChild(del);
+        return block;
+      }
+    });
+    return editor.wrap;
+  }
+
   if (row.key === 'unit_limits') {
     let items = parseNameAmountItems(row.value);
     if (items.length === 0) items = [{ name: '', amount: '' }];
@@ -9855,15 +10821,22 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         line.className = 'structured-card';
         const block = document.createElement('div');
         block.className = 'kv-row';
+        const tagOpts = getUnitTypeTagOptions();
         const unitOpts = getNamedReferenceOptionsForTab('units');
-        if (item.name && !unitOpts.some((opt) => opt.value === item.name)) {
-          unitOpts.unshift({ value: item.name, label: item.name, entry: null });
+        const unitLimitOpts = [
+          ...(tagOpts.length > 0 ? [{ separator: true, label: 'Unit Type Tags' }] : []),
+          ...tagOpts,
+          ...(unitOpts.length > 0 ? [{ separator: true, label: 'Units' }] : []),
+          ...unitOpts
+        ];
+        if (item.name && !unitLimitOpts.some((opt) => !opt.separator && opt.value === item.name)) {
+          unitLimitOpts.unshift({ value: item.name, label: item.name, entry: null });
         }
         const unitPicker = createReferencePicker({
-          options: unitOpts,
+          options: unitLimitOpts,
           targetTabKey: 'units',
           currentValue: item.name || '-1',
-          searchPlaceholder: 'Search Unit...',
+          searchPlaceholder: 'Search Unit or Tag...',
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
@@ -10402,6 +11375,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
   if (row.key === 'production_perfume' || row.key === 'perfume_specs' || row.key === 'technology_perfume' || row.key === 'resource_perfume' || row.key === 'government_perfume') {
     const improvementOptions = getNamedReferenceOptionsForTab('improvements');
     const unitOptions = getNamedReferenceOptionsForTab('units');
+    const unitTypeTagOptions = getUnitTypeTagOptions();
     const techOptions = getNamedReferenceOptionsForTab('technologies');
     const resourceOptions = getNamedReferenceOptionsForTab('resources');
     const govOptions = getNamedReferenceOptionsForTab('governments');
@@ -10410,6 +11384,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
       if (!n) return 'improvements';
       if (improvementOptions.some((o) => o.value === n)) return 'improvements';
       if (unitOptions.some((o) => o.value === n)) return 'units';
+      if (unitTypeTagOptions.some((o) => o.value === n)) return 'units';
       return 'improvements';
     };
     const buildCombinedProductionOptions = (currentName) => {
@@ -10425,6 +11400,11 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         if (!value) return;
         duplicateCounts.set(value, (duplicateCounts.get(value) || 0) + 1);
       });
+      unitTypeTagOptions.forEach((opt) => {
+        const value = String(opt && opt.value || '').trim();
+        if (!value) return;
+        duplicateCounts.set(value, (duplicateCounts.get(value) || 0) + 1);
+      });
       const mapGroup = (options, groupLabel) => options.map((opt) => {
         const value = String(opt && opt.value || '').trim();
         const baseLabel = String(opt && opt.label || value).trim();
@@ -10436,9 +11416,11 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         };
       }).filter((opt) => !!opt.value);
       const groupedImprovements = mapGroup(improvementOptions, 'Improvement');
+      const groupedTags = mapGroup(unitTypeTagOptions, 'Unit Tag');
       const groupedUnits = mapGroup(unitOptions, 'Unit');
       const knownValues = new Set([
         ...groupedImprovements.map((opt) => opt.value),
+        ...groupedTags.map((opt) => opt.value),
         ...groupedUnits.map((opt) => opt.value)
       ]);
       const customOptions = normalizedCurrent && !knownValues.has(normalizedCurrent)
@@ -10448,6 +11430,8 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         ...customOptions,
         ...(groupedImprovements.length > 0 ? [{ separator: true, label: 'Improvements' }] : []),
         ...groupedImprovements,
+        ...(groupedTags.length > 0 ? [{ separator: true, label: 'Unit Type Tags' }] : []),
+        ...groupedTags,
         ...(groupedUnits.length > 0 ? [{ separator: true, label: 'Units' }] : []),
         ...groupedUnits
       ];
@@ -10498,7 +11482,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
             : targetKind === 'governments'
               ? govOptions
               : targetKind === 'units'
-                ? unitOptions
+                ? getUnitOrTagReferenceOptions()
                 : improvementOptions;
         const pickerTab = row.key === 'production_perfume' || row.key === 'perfume_specs'
           ? 'improvements'
@@ -10512,7 +11496,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
           targetTabKey: pickerTab,
           currentValue: item.name || '-1',
           searchPlaceholder: row.key === 'production_perfume' || row.key === 'perfume_specs'
-            ? 'Search Unit or Improvement...'
+            ? 'Search Unit, Tag, or Improvement...'
             : `Search ${toFriendlyKey(pickerTab).replace(/s$/, '')}...`,
           noneLabel: '(none)',
           onSelect: (next) => {
@@ -10656,6 +11640,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         const unitsEditor = makeNamedListPickerEditor({
           tabKey: 'units',
           values: Array.isArray(item.units) ? item.units : [],
+          options: getUnitOrTagReferenceOptions(),
           onValuesChange: (nextValues) => {
             item.units = nextValues;
             onChange(serializeBuildingPrereqItems(api.items));
@@ -10920,6 +11905,12 @@ function renderBaseTab(tab) {
   const groups = new Map();
   const baseFieldKeys = new Set((tab.rows || []).map((row) => String(row && row.key || '').trim()).filter(Boolean));
   state.baseRowElementsByKey = new Map();
+  const remountBaseInputByKey = (rawKey) => {
+    const key = String(rawKey || '').trim().toLowerCase();
+    if (!key) return;
+    const rowEl = state.baseRowElementsByKey.get(key);
+    if (rowEl && typeof rowEl._remountBaseInput === 'function') rowEl._remountBaseInput();
+  };
   const focusBaseRowByKey = (rawKey) => {
     const key = String(rawKey || '').trim().toLowerCase();
     if (!key) return;
@@ -11080,6 +12071,19 @@ function renderBaseTab(tab) {
         dirtyBadge.classList.toggle('hidden', !isBaseRowDirty(row));
         refreshSourceBadge();
         setDirty(true);
+        if (String(row && row.key || '').trim() === 'unit_type_tags') {
+          [
+            'unit_limits',
+            'counter_rules',
+            'production_perfume',
+            'building_prereqs_for_units',
+            'exclude_types_from_units_per_tile_limit',
+            'limit_defensive_retreat_on_water_to_types',
+            'ptw_like_artillery_targeting',
+            'can_bombard_only_sea_tiles',
+            'unit_visibility_rules'
+          ].forEach((dependentKey) => remountBaseInputByKey(dependentKey));
+        }
       }, {
         undoKey: `BASE:${String(row && row.key || '').trim()}`
       });
@@ -11089,6 +12093,11 @@ function renderBaseTab(tab) {
       }
       inputHost.appendChild(input);
       r.classList.add('base-row-mounted');
+    };
+    r._remountBaseInput = () => {
+      if (!inputMounted) return;
+      inputMounted = false;
+      ensureInputMounted();
     };
     r._ensureBaseInputMounted = ensureInputMounted;
     r.addEventListener('focusin', ensureInputMounted);
@@ -11135,9 +12144,17 @@ function renderBaseTab(tab) {
   const applyFilter = () => {
     const needle = filterInput.value.trim().toLowerCase();
     state.baseFilter = filterInput.value;
+    const visibilityByEl = new Map();
     rowElements.forEach((entry) => {
       const hay = String(entry.searchText || entry.key || '');
-      entry.el.style.display = !needle || hay.includes(needle) ? '' : 'none';
+      const matches = !needle || hay.includes(needle);
+      visibilityByEl.set(entry.el, !!(visibilityByEl.get(entry.el) || matches));
+    });
+    visibilityByEl.forEach((visible, rowEl) => {
+      rowEl.style.display = visible ? '' : 'none';
+      if (visible && needle && rowEl && typeof rowEl._ensureBaseInputMounted === 'function') {
+        rowEl._ensureBaseInputMounted();
+      }
     });
     groups.forEach((g) => {
       const hasVisible = Array.from(g.rowsWrap.children).some((child) => child.style.display !== 'none');
@@ -11236,7 +12253,11 @@ const NATURAL_WONDER_ANIMATION_SPEC_ALIASES = new Map([
   ['show_in_day_night_hours', 'show_in_day_night_hours'],
   ['day_night_hours', 'show_in_day_night_hours'],
   ['show_in_seasons', 'show_in_seasons'],
-  ['seasons', 'show_in_seasons']
+  ['seasons', 'show_in_seasons'],
+  ['cultures', 'show_in_cultures'],
+  ['show_in_cultures', 'show_in_cultures'],
+  ['eras', 'show_in_eras'],
+  ['show_in_eras', 'show_in_eras']
 ]);
 
 function parseNaturalWonderAnimationSpec(spec) {
@@ -11248,6 +12269,8 @@ function parseNaturalWonderAnimationSpec(spec) {
     direction: '',
     show_in_day_night_hours: '',
     show_in_seasons: '',
+    show_in_cultures: '',
+    show_in_eras: '',
     extras: []
   };
   const chunks = String(spec || '')
@@ -11287,8 +12310,11 @@ function parseNaturalWonderAnimationSpec(spec) {
   return parsed;
 }
 
-function serializeNaturalWonderAnimationSpec(spec) {
+function serializeNaturalWonderAnimationSpec(spec, options = {}) {
   const source = spec && typeof spec === 'object' ? spec : {};
+  const includeDirection = !(options && options.includeDirection === false);
+  const includeCultures = !!(options && options.includeCultures) || !!String(source.show_in_cultures || '').trim();
+  const includeEras = !!(options && options.includeEras) || !!String(source.show_in_eras || '').trim();
   const parts = [];
   const pushIf = (key, value) => {
     const clean = String(value || '').trim();
@@ -11296,12 +12322,15 @@ function serializeNaturalWonderAnimationSpec(spec) {
     parts.push(`${key}=${clean}`);
   };
   pushIf('ini', source.ini);
+  pushIf('hours', source.show_in_day_night_hours);
+  pushIf('seasons', source.show_in_seasons);
+  if (includeCultures) pushIf('cultures', source.show_in_cultures);
+  if (includeEras) pushIf('eras', source.show_in_eras);
   pushIf('frame_time_seconds', source.frame_time_seconds);
-  pushIf('x_offset', source.x_offset);
-  pushIf('y_offset', source.y_offset);
-  pushIf('direction', source.direction);
-  pushIf('show_in_day_night_hours', source.show_in_day_night_hours);
-  pushIf('show_in_seasons', source.show_in_seasons);
+  const xOffset = String(source.x_offset || '').trim();
+  const yOffset = String(source.y_offset || '').trim();
+  if (xOffset || yOffset) parts.push(`offsets=${xOffset || '0'},${yOffset || '0'}`);
+  if (includeDirection) pushIf('direction', source.direction);
   const extras = Array.isArray(source.extras) ? source.extras : [];
   extras.forEach((extra) => {
     const key = String(extra && extra.key || '').trim();
@@ -11364,21 +12393,6 @@ function getNaturalWonderAnimationIniPath(spec) {
   return String(parsed.ini || '').trim();
 }
 
-function syncNaturalWonderAnimationDirections(section, options = {}) {
-  const adjacencyDirection = String(getFieldValue(section, 'adjacency_dir') || '').trim();
-  const specs = getFieldValuesRaw(section, 'animation');
-  if (!adjacencyDirection || specs.length === 0) return;
-  const nextSpecs = specs
-    .map((raw) => {
-      const parsed = parseNaturalWonderAnimationSpec(raw);
-      parsed.direction = adjacencyDirection;
-      return serializeNaturalWonderAnimationSpec(parsed);
-    })
-    .map((raw) => String(raw || '').trim())
-    .filter(Boolean);
-  setMultiFieldValues(section, 'animation', nextSpecs, options);
-}
-
 function parseFrameSecondsFromSpec(spec) {
   const parsed = parseNaturalWonderAnimationSpec(spec);
   const v = Number.parseFloat(parsed.frame_time_seconds);
@@ -11392,6 +12406,11 @@ function getPreviewDelayMs(tabKey, section, title) {
     if (Number.isFinite(seconds) && seconds > 0) return Math.max(16, Math.round(seconds * 1000));
   }
   if (tabKey === 'naturalWonders' && title === 'Animation') {
+    const spec = getFieldValuesRaw(section, 'animation').find((item) => getNaturalWonderAnimationIniPath(item)) || '';
+    const seconds = parseFrameSecondsFromSpec(spec);
+    if (seconds) return Math.max(16, Math.round(seconds * 1000));
+  }
+  if (tabKey === 'districts' && title === 'Animation') {
     const spec = getFieldValuesRaw(section, 'animation').find((item) => getNaturalWonderAnimationIniPath(item)) || '';
     const seconds = parseFrameSecondsFromSpec(spec);
     if (seconds) return Math.max(16, Math.round(seconds * 1000));
@@ -11411,10 +12430,23 @@ function renderRgbaPreview(container, preview, title, delayMsProvider, displayWi
   canvas.width = preview.width;
   canvas.height = preview.height;
   canvas.className = 'preview-canvas';
+  const nativeSize = !!(options && options.nativeSize);
   const previewWidth = Number.isFinite(displayWidth) && displayWidth > 0 ? displayWidth : state.previewSize;
-  canvas.style.width = `${previewWidth}px`;
-  canvas.style.height = 'auto';
+  canvas.style.width = nativeSize ? `${preview.width}px` : `${previewWidth}px`;
+  canvas.style.height = nativeSize ? `${preview.height}px` : 'auto';
   const ctx = canvas.getContext('2d');
+  let previewNode = canvas;
+  if (options && options.fixedPreviewFrame) {
+    const frameSize = typeof options.fixedPreviewFrame === 'object' ? options.fixedPreviewFrame : {};
+    const frame = document.createElement('div');
+    frame.className = 'preview-native-frame';
+    const frameWidth = Number.isFinite(Number(frameSize.width)) ? Number(frameSize.width) : state.previewSize;
+    const frameHeight = Number.isFinite(Number(frameSize.height)) ? Number(frameSize.height) : state.previewSize;
+    frame.style.width = `${Math.max(1, frameWidth)}px`;
+    frame.style.height = `${Math.max(1, frameHeight)}px`;
+    frame.appendChild(canvas);
+    previewNode = frame;
+  }
   if (options && options.softBlueFrame) {
     const frame = document.createElement('div');
     frame.className = 'section-art-soft-frame';
@@ -11425,10 +12457,10 @@ function renderRgbaPreview(container, preview, title, delayMsProvider, displayWi
       hint.title = String(options.directionHint.title || '');
       frame.appendChild(hint);
     }
-    frame.appendChild(canvas);
+    frame.appendChild(previewNode);
     card.appendChild(frame);
   } else {
-    card.appendChild(canvas);
+    card.appendChild(previewNode);
   }
 
   const meta = document.createElement('div');
@@ -11557,6 +12589,9 @@ async function loadPreviewsForSection(tabKey, section, previewWrap, shouldContin
       : null;
     if (tabKey === 'naturalWonders' && String(taskTitle || '') === 'Animation') {
       return { ...(previewOptions || {}), skipBlankMagentaFrames: true };
+    }
+    if (tabKey === 'animations' && String(taskTitle || '') === 'Animation FLC') {
+      return { nativeSize: true, fixedPreviewFrame: { width: state.previewSize, height: state.previewSize } };
     }
     if (wonderDirectionHint) {
       return { ...(previewOptions || {}), directionHint: wonderDirectionHint };
@@ -11688,18 +12723,35 @@ async function loadPreviewsForSection(tabKey, section, previewWrap, shouldContin
     });
     const firstAnimationSpec = getFieldValuesRaw(section, 'animation').find((spec) => getNaturalWonderAnimationIniPath(spec));
     if (firstAnimationSpec) {
+      const animationSpec = parseNaturalWonderAnimationSpec(firstAnimationSpec);
       const iniPath = getNaturalWonderAnimationIniPath(firstAnimationSpec);
+      const directionIndex = resolveAnimationDirectionIndexFromValue(animationSpec.direction);
       tasks.push({
         title: 'Animation',
         displayWidth: Math.max(120, Math.round(state.previewSize * 0.72)),
-        request: { kind: 'animationIni', c3xPath: state.settings.c3xPath, iniPath }
+        request: {
+          kind: 'animationIni',
+          c3xPath: state.settings.c3xPath,
+          iniPath,
+          directionIndex,
+          scenarioPath: state.settings.scenarioPath,
+          scenarioPaths: getScenarioPreviewPaths()
+        }
       });
     }
   } else if (tabKey === 'animations') {
-    const iniPath = getFieldValue(section, 'ini_path');
+    const iniPath = normalizeAnimationIniRelativePath(getFieldValue(section, 'ini_path'));
+    const directionIndex = resolveAnimationDirectionIndex(section);
     tasks.push({
       title: 'Animation FLC',
-      request: { kind: 'animationIni', c3xPath: state.settings.c3xPath, iniPath }
+      request: {
+        kind: 'animationIni',
+        c3xPath: state.settings.c3xPath,
+        iniPath,
+        directionIndex,
+        scenarioPath: state.settings.scenarioPath,
+        scenarioPaths: getScenarioPreviewPaths()
+      }
     });
   }
 
@@ -11712,12 +12764,7 @@ async function loadPreviewsForSection(tabKey, section, previewWrap, shouldContin
       const res = await window.c3xManager.getPreview(task.request);
       if (!isCurrent()) return;
       if (res && res.ok) {
-        const prepared = (tabKey === 'animations')
-          ? (() => {
-              const dirIndex = resolveAnimationDirectionIndex(section);
-              return Number.isInteger(dirIndex) ? sliceUnitPreviewByDirection(res, dirIndex) : res;
-            })()
-          : res;
+        const prepared = res;
         appendDebugLog('preview:response:ok', { tabKey, title: task.title, animated: !!res.animated, width: res.width, height: res.height, sourcePath: res.sourcePath, frames: res.framesBase64 ? res.framesBase64.length : 0, debug: res.debug || null });
         const lane = String(task && task.lane || 'base');
         if (tabKey === 'wonders' && lane === 'alt' && !altWrap) {
@@ -12122,9 +13169,13 @@ function collectReferencedAnimationIniEntries() {
   const out = [];
   const tabs = state.bundle && state.bundle.tabs ? state.bundle.tabs : {};
   const animationsTab = tabs.animations;
+  const districtsTab = tabs.districts;
   const naturalWondersTab = tabs.naturalWonders;
   const animationSections = Array.isArray(animationsTab && animationsTab.model && animationsTab.model.sections)
     ? animationsTab.model.sections
+    : [];
+  const districtSections = Array.isArray(districtsTab && districtsTab.model && districtsTab.model.sections)
+    ? districtsTab.model.sections
     : [];
   const naturalSections = Array.isArray(naturalWondersTab && naturalWondersTab.model && naturalWondersTab.model.sections)
     ? naturalWondersTab.model.sections
@@ -12137,6 +13188,20 @@ function collectReferencedAnimationIniEntries() {
         sourceCandidates: resolveAnimationIniReferenceCandidates(rawIniPath),
         note: 'Tile animation INI source',
         animationIni: true
+      });
+    });
+  }
+  if (districtSections.length > 0) {
+    districtSections.forEach((section) => {
+      const specs = getFieldValuesRaw(section, 'animation');
+      specs.forEach((spec) => {
+        const rawIniPath = getNaturalWonderAnimationIniPath(spec);
+        if (!rawIniPath) return;
+        out.push({
+          sourceCandidates: resolveAnimationIniReferenceCandidates(rawIniPath),
+          note: 'District animation INI source',
+          animationIni: true
+        });
       });
     });
   }
@@ -14499,6 +15564,96 @@ async function openFlicWorkshopForUnitEntry(entry, preferredKey = '') {
   return openFlicWorkshopForUnitAnimationModel(model, preferredKey || res.defaultActionKey);
 }
 
+async function openFlicWorkshopForTileAnimationSection(section) {
+  const iniPath = normalizeAnimationIniRelativePath(getFieldValue(section, 'ini_path'));
+  if (!iniPath) {
+    setStatus('Choose an animation INI before opening the FLC Workshop.', true);
+    return false;
+  }
+  if (!window.c3xManager || typeof window.c3xManager.getPreview !== 'function') {
+    setStatus('Preview service is not available.', true);
+    return false;
+  }
+  const directionIndex = resolveAnimationDirectionIndex(section);
+  const res = await window.c3xManager.getPreview({
+    kind: 'animationIni',
+    c3xPath: state.settings.c3xPath,
+    iniPath,
+    directionIndex,
+    frameOffset: 'middle',
+    maxFrames: 1,
+    scenarioPath: state.settings.scenarioPath,
+    scenarioPaths: getScenarioPreviewPaths()
+  });
+  if (!res || !res.ok || !String(res.sourcePath || '').trim()) {
+    setStatus(`Unable to load animation FLC for Workshop: ${res && res.error ? res.error : 'unknown error'}`, true);
+    return false;
+  }
+  const actionKey = 'Animation';
+  const flcPath = String(res.sourcePath || '').trim();
+  void openFlicWorkshopModal({
+    flcPath,
+    actionKey,
+    actionRows: [{ key: actionKey, relativePath: flcPath }]
+  });
+  return true;
+}
+
+async function openFlicWorkshopForSectionAnimation(section, tabKey) {
+  const label = tabKey === 'districts' ? 'district' : 'natural wonder';
+  const specs = getFieldValuesRaw(section, 'animation')
+    .map((raw, idx) => ({ raw, idx, parsed: parseNaturalWonderAnimationSpec(raw) }))
+    .filter((item) => normalizeAnimationIniRelativePath(item.parsed && item.parsed.ini));
+  if (!specs.length) {
+    setStatus(`Choose an animation INI before opening the ${label} FLC Workshop.`, true);
+    return false;
+  }
+  if (!window.c3xManager || typeof window.c3xManager.getPreview !== 'function') {
+    setStatus('Preview service is not available.', true);
+    return false;
+  }
+
+  const rows = [];
+  let lastError = '';
+  for (const item of specs) {
+    const iniPath = normalizeAnimationIniRelativePath(item.parsed.ini);
+    const directionIndex = resolveAnimationDirectionIndexFromValue(item.parsed.direction);
+    try {
+      const res = await window.c3xManager.getPreview({
+        kind: 'animationIni',
+        c3xPath: state.settings.c3xPath,
+        iniPath,
+        directionIndex,
+        frameOffset: 'middle',
+        maxFrames: 1,
+        scenarioPath: state.settings.scenarioPath,
+        scenarioPaths: getScenarioPreviewPaths()
+      });
+      if (res && res.ok && String(res.sourcePath || '').trim()) {
+        rows.push({
+          key: `Animation ${item.idx + 1}`,
+          relativePath: String(res.sourcePath || '').trim()
+        });
+      } else {
+        lastError = res && res.error ? res.error : 'unknown error';
+      }
+    } catch (err) {
+      lastError = err && err.message ? err.message : String(err || 'unknown error');
+    }
+  }
+
+  if (!rows.length) {
+    setStatus(`Unable to load ${label} animation FLC for Workshop: ${lastError || 'unknown error'}`, true);
+    return false;
+  }
+  void openFlicWorkshopModal({
+    flcPath: rows[0].relativePath,
+    actionKey: rows[0].key,
+    actionRows: rows
+  });
+  return true;
+}
+
 async function loadPreviewsForReferenceEntry(tabKey, entry, previewWrap) {
   const cacheKey = JSON.stringify({
     kind: 'reference',
@@ -14542,12 +15697,25 @@ function drawPreviewFrameToCanvas(preview, canvas, options = {}) {
     }
     rgba = preview._cachedRgbaBytes;
   } else if (preview.framesBase64 && preview.framesBase64[0]) {
-    if (!preview._cachedFirstFrameBytes) {
-      preview._cachedFirstFrameBytes = fromBase64ToUint8(preview.framesBase64[0]);
+    const frameCount = preview.framesBase64.length;
+    const requestedFrame = Number.isFinite(Number(options.frameIndex)) ? Math.trunc(Number(options.frameIndex)) : 0;
+    const frameIndex = Math.max(0, Math.min(frameCount - 1, requestedFrame));
+    if (!preview._cachedFrameBytesByIndex) preview._cachedFrameBytesByIndex = {};
+    if (!preview._cachedFrameBytesByIndex[frameIndex]) {
+      preview._cachedFrameBytesByIndex[frameIndex] = fromBase64ToUint8(preview.framesBase64[frameIndex]);
     }
-    rgba = preview._cachedFirstFrameBytes;
+    rgba = preview._cachedFrameBytesByIndex[frameIndex];
   } else {
     return;
+  }
+  if (options.transparentMagenta) {
+    const copy = new Uint8ClampedArray(rgba);
+    for (let i = 0; i < copy.length; i += 4) {
+      if (copy[i] === 255 && copy[i + 1] === 0 && copy[i + 2] === 255) {
+        copy[i + 3] = 0;
+      }
+    }
+    rgba = copy;
   }
   const scratch = getPreviewScratchCanvas(preview.width, preview.height);
   if (!scratch || !scratch.ctx || !scratch.canvas) return;
@@ -15780,6 +16948,9 @@ const DISTRICT_CULTURE_OPTIONS = [
   'asian'
 ];
 
+const DISTRICT_ANIMATION_CULTURE_OPTIONS = ['AMER', 'EURO', 'ROMAN', 'MIDEAST', 'ASIAN'];
+const DISTRICT_ANIMATION_ERA_OPTIONS = ['ancient', 'middle', 'industrial', 'modern'];
+
 function getConfiguredSectionListValues(tabKeys, fieldKey) {
   const seen = new Set();
   (Array.isArray(tabKeys) ? tabKeys : []).forEach((tabKey) => {
@@ -15936,7 +17107,21 @@ function orderSectionFieldsByDocs(schemaFields, fieldDocs) {
 function applyPreferredSectionFieldOrder(tabKey, orderedFields) {
   const fields = Array.isArray(orderedFields) ? orderedFields.slice() : [];
   let priorityByKey = null;
-  if (tabKey === 'wonders') {
+  if (tabKey === 'districts') {
+    priorityByKey = new Map([
+      ['name', 0],
+      ['display_name', 1],
+      ['tooltip', 2],
+      ['img_paths', 3],
+      ['img_column_count', 4],
+      ['render_strategy', 5],
+      ['custom_width', 6],
+      ['custom_height', 7],
+      ['x_offset', 8],
+      ['y_offset', 9],
+      ['animation', 10]
+    ]);
+  } else if (tabKey === 'wonders') {
     priorityByKey = new Map([
       ['name', 0],
       ['img_path', 1],
@@ -15963,6 +17148,23 @@ function applyPreferredSectionFieldOrder(tabKey, orderedFields) {
       ['adjacent_to', 6],
       ['adjacency_dir', 7]
     ]);
+  } else if (tabKey === 'animations') {
+    priorityByKey = new Map([
+      ['name', 0],
+      ['ini_path', 1],
+      ['frame_time_seconds', 2],
+      ['type', 3],
+      ['resource_type', 4],
+      ['pcx_file', 5],
+      ['pcx_index', 6],
+      ['terrain_types', 7],
+      ['adjacent_to', 8],
+      ['direction', 9],
+      ['x_offset', 10],
+      ['y_offset', 11],
+      ['show_in_day_night_hours', 12],
+      ['show_in_seasons', 13]
+    ]);
   } else {
     return fields;
   }
@@ -15987,8 +17189,12 @@ function shouldShowAnimationFieldForType(fieldKey, typeValue) {
 }
 
 function resolveAnimationDirectionIndex(section) {
-  const direction = normalizeConfigToken(getFieldValue(section, 'direction')).toLowerCase();
-  if (!direction) return null;
+  return resolveAnimationDirectionIndexFromValue(getFieldValue(section, 'direction'));
+}
+
+function resolveAnimationDirectionIndexFromValue(value) {
+  const direction = normalizeConfigToken(value).toLowerCase();
+  if (!direction) return 0;
   const map = {
     northeast: 4,
     east: 3,
@@ -16602,7 +17808,10 @@ function getFilePickerOptionsForSectionField(schemaField, currentValue = '') {
   const key = String(schemaField && schemaField.key || '').toLowerCase();
   const normalizedValue = String(currentValue || '').trim();
   const picker = {};
-  if (normalizedValue) {
+  if (key.includes('ini')) {
+    const defaultPath = getAnimationIniPickerDefaultPath(normalizedValue);
+    if (defaultPath) picker.defaultPath = defaultPath;
+  } else if (normalizedValue) {
     picker.defaultPath = normalizedValue;
   } else if (state.settings && state.settings.c3xPath) {
     picker.defaultPath = String(state.settings.c3xPath);
@@ -16686,11 +17895,64 @@ function normalizeScenarioArtRelativePath(value) {
   return parts[parts.length - 1] || '';
 }
 
+function getAnimationArtRootCandidates() {
+  const roots = [];
+  const addRoot = (value) => {
+    const root = toSlashPath(value).trim().replace(/\/+$/, '');
+    if (!root) return;
+    const artRoot = `${root}/Art/Animations`;
+    if (!roots.includes(artRoot)) roots.push(artRoot);
+  };
+  addRoot(getActiveScenarioDir());
+  if (Array.isArray(state.bundle && state.bundle.scenarioSearchPaths)) {
+    state.bundle.scenarioSearchPaths.forEach(addRoot);
+  }
+  addRoot(state.settings && state.settings.c3xPath);
+  return roots;
+}
+
+function normalizeAnimationIniRelativePath(value) {
+  const raw = toSlashPath(String(value || '').trim()).replace(/^["']|["']$/g, '').replace(/\/+/g, '/');
+  if (!raw) return '';
+  const withoutArtPrefix = raw.replace(/^\.?\/*Art\/Animations\//i, '');
+  if (!isAbsoluteAssetPath(withoutArtPrefix)) {
+    return withoutArtPrefix.replace(/^\.?\/*/, '');
+  }
+  const full = raw.replace(/\/+$/, '');
+  const fullLower = full.toLowerCase();
+  for (const root of getAnimationArtRootCandidates()) {
+    const cleanRoot = toSlashPath(root).replace(/\/+$/, '');
+    const rootLower = cleanRoot.toLowerCase();
+    if (fullLower.startsWith(`${rootLower}/`)) {
+      return full.slice(cleanRoot.length + 1).replace(/^\.?\/*/, '');
+    }
+  }
+  const anywhere = full.match(/(?:^|\/)Art\/Animations\/(.+)$/i);
+  if (anywhere && anywhere[1]) return String(anywhere[1]).replace(/^\.?\/*/, '');
+  return full;
+}
+
+function getAnimationIniPickerDefaultPath(currentValue = '') {
+  const raw = toSlashPath(String(currentValue || '').trim()).replace(/^["']|["']$/g, '');
+  if (raw && isAbsoluteAssetPath(raw)) return raw;
+  const rel = normalizeAnimationIniRelativePath(raw);
+  const roots = getAnimationArtRootCandidates();
+  const base = roots[0] || (state.settings && state.settings.c3xPath ? `${toSlashPath(state.settings.c3xPath).replace(/\/+$/, '')}/Art/Animations` : '');
+  if (!base) return raw || '';
+  return rel ? `${base.replace(/\/+$/, '')}/${rel}` : base;
+}
+
 function isSectionArtImagePathField(tabKey, fieldKey) {
   const tab = String(tabKey || '');
   const key = String(fieldKey || '').trim().toLowerCase();
   return (tab === 'districts' && key === 'img_paths')
     || ((tab === 'wonders' || tab === 'naturalWonders') && key === 'img_path');
+}
+
+function isAnimationIniPathField(tabKey, fieldKey) {
+  const tab = String(tabKey || '');
+  const key = String(fieldKey || '').trim().toLowerCase();
+  return key === 'ini_path' && (tab === 'animations' || tab === 'naturalWonders');
 }
 
 function getParentPath(rawPath) {
@@ -43386,6 +44648,353 @@ async function loadImportEntriesForTab(tabKey, source) {
   };
 }
 
+const SECTION_IMPORT_CONFIGS = {
+  districts: {
+    title: 'District: Import',
+    body: 'Select a source scenario, choose a district, then confirm the name for the imported district.',
+    sourcePrompt: 'Select a source scenario to load districts.',
+    emptySource: 'Selected scenario has no districts.',
+    searchPlaceholder: 'Search Districts in selected source...',
+    noneLabel: 'Choose district to import...',
+    fallbackName: 'District',
+    thumbClassName: 'district-entry-thumb',
+    statusName: 'district',
+    display: (section, index) => getDistrictSectionDisplay(section, index),
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadDistrictRepresentativePreview(section, holder, 35, null, {
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
+  },
+  wonders: {
+    title: 'Wonder District: Import',
+    body: 'Select a source scenario, choose a wonder district, then confirm the name for the imported wonder district.',
+    sourcePrompt: 'Select a source scenario to load wonder districts.',
+    emptySource: 'Selected scenario has no wonder districts.',
+    searchPlaceholder: 'Search Wonder Districts in selected source...',
+    noneLabel: 'Choose wonder district to import...',
+    fallbackName: 'Wonder District',
+    thumbClassName: 'wonder-entry-thumb',
+    statusName: 'wonder district',
+    display: (section, index) => {
+      const primary = getSectionTitle(section, SECTION_SCHEMAS.wonders, index);
+      return { primary, secondary: normalizeConfigToken(getFieldValue(section, 'img_path')) || '' };
+    },
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadWonderCompletedThumbnail(section, holder, 44, {
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
+  },
+  naturalWonders: {
+    title: 'Natural Wonder: Import',
+    body: 'Select a source scenario, choose a natural wonder, then confirm the name for the imported natural wonder.',
+    sourcePrompt: 'Select a source scenario to load natural wonders.',
+    emptySource: 'Selected scenario has no natural wonders.',
+    searchPlaceholder: 'Search Natural Wonders in selected source...',
+    noneLabel: 'Choose natural wonder to import...',
+    fallbackName: 'Natural Wonder',
+    thumbClassName: 'natural-wonder-entry-thumb',
+    statusName: 'natural wonder',
+    display: (section, index) => {
+      const primary = getSectionTitle(section, SECTION_SCHEMAS.naturalWonders, index);
+      return { primary, secondary: normalizeConfigToken(getFieldValue(section, 'terrain_type')) || '' };
+    },
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadNaturalWonderThumbnail(section, holder, 44, {
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
+  }
+};
+
+async function loadImportSectionSections(source, tabKey) {
+  const scenarioPath = String((source && (source.scenarioPath || source.filePath)) || source || '').trim();
+  const config = SECTION_IMPORT_CONFIGS[tabKey] || SECTION_IMPORT_CONFIGS.districts;
+  if (!scenarioPath) throw new Error(`Choose a source scenario BIQ file to import ${config.statusName}s.`);
+  const loaded = await window.c3xManager.loadBundle(buildLoadBundlePayload({
+    mode: 'scenario',
+    scenarioPath
+  }));
+  const srcTab = loaded && loaded.tabs && loaded.tabs[tabKey];
+  const sections = srcTab && srcTab.model && Array.isArray(srcTab.model.sections)
+    ? srcTab.model.sections
+    : [];
+  return {
+    sections,
+    importSourcePath: scenarioPath,
+    importScenarioPaths: Array.isArray(loaded && loaded.scenarioSearchPaths) ? loaded.scenarioSearchPaths : []
+  };
+}
+
+async function loadImportDistrictSections(source) {
+  return loadImportSectionSections(source, 'districts');
+}
+
+function loadImportDistrictPreviewThumb(section, holder, importSourcePath, importScenarioPaths) {
+  return loadDistrictRepresentativePreview(section, holder, 35, null, {
+    scenarioPath: importSourcePath,
+    scenarioPaths: importScenarioPaths
+  });
+}
+
+async function promptSectionImportAction(tab, tabKey) {
+  const config = SECTION_IMPORT_CONFIGS[tabKey] || SECTION_IMPORT_CONFIGS.districts;
+  if (!el.entityModalOverlay || !el.entityModalContent) return null;
+  if (el.entityModalTitle) el.entityModalTitle.textContent = config.title;
+  if (el.entityModalBody) {
+    el.entityModalBody.textContent = config.body;
+  }
+  if (el.entityModalConfirm) {
+    el.entityModalConfirm.textContent = 'Import';
+    el.entityModalConfirm.disabled = true;
+  }
+  el.entityModalContent.innerHTML = '';
+
+  const form = document.createElement('div');
+  form.className = 'entity-modal-content';
+  const grid = document.createElement('div');
+  grid.className = 'entity-form-grid';
+  form.appendChild(grid);
+
+  const nameField = document.createElement('div');
+  nameField.className = 'entity-field';
+  nameField.style.gridColumn = '1 / -1';
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Name';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = `Imported ${config.statusName} name`;
+  const nameFeedback = document.createElement('p');
+  nameFeedback.className = 'reference-key-feedback';
+  nameField.appendChild(nameLabel);
+  nameField.appendChild(nameInput);
+  nameField.appendChild(nameFeedback);
+  grid.appendChild(nameField);
+
+  const sourceField = document.createElement('div');
+  sourceField.className = 'entity-field';
+  sourceField.style.gridColumn = '1 / -1';
+  const sourceSelect = document.createElement('select');
+  sourceSelect.className = 'entity-import-scenario-pill';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Source...';
+  sourceSelect.appendChild(placeholder);
+  const manualOption = document.createElement('option');
+  manualOption.value = '__manual__';
+  manualOption.textContent = 'Manual / Browse...';
+  sourceSelect.appendChild(manualOption);
+  const currentScenario = toSlashPath(state.settings && state.settings.scenarioPath || '').toLowerCase();
+  const addScenarioGroup = (source, label) => {
+    const items = (state.availableScenarios || []).filter((s) => {
+      const sourceMatches = String(s && s.source || '') === source;
+      const pathValue = toSlashPath(s && s.path || '').toLowerCase();
+      return sourceMatches && pathValue && pathValue !== currentScenario;
+    });
+    if (!items.length) return;
+    const group = document.createElement('optgroup');
+    group.label = label;
+    items.forEach((item) => {
+      const option = document.createElement('option');
+      option.value = String(item.path || '');
+      option.textContent = String(item.name || item.fileName || getPathTail(item.path || ''));
+      option.title = String(item.path || '');
+      group.appendChild(option);
+    });
+    sourceSelect.appendChild(group);
+  };
+  addScenarioGroup('Conquests', 'Conquests Folder');
+  addScenarioGroup('Scenarios', 'Scenarios Folder');
+  sourceField.appendChild(sourceSelect);
+  grid.appendChild(sourceField);
+
+  const pickerHost = document.createElement('div');
+  pickerHost.className = 'entity-import-picker district-import-picker';
+  form.appendChild(pickerHost);
+  el.entityModalContent.appendChild(form);
+
+  let importFilePath = '';
+  let importScenarioPaths = [];
+  let importSections = [];
+  let selectedImportIndex = -1;
+  let nameEdited = false;
+
+  const getExistingNames = () => new Set((Array.isArray(tab && tab.model && tab.model.sections) ? tab.model.sections : [])
+    .map((section) => normalizeConfigToken(getSectionFieldValueCaseInsensitive(section, 'name')).toLowerCase())
+    .filter(Boolean));
+
+  const validateName = () => {
+    const name = String(nameInput.value || '').trim();
+    const existing = getExistingNames();
+    if (!name) return { ok: false, message: 'Name is required.' };
+    if (existing.has(name.toLowerCase())) return { ok: false, message: 'Name must be unique.' };
+    return { ok: true, message: 'Name is available.' };
+  };
+
+  const updateConfirmButton = () => {
+    const validation = validateName();
+    const showNameFeedback = nameEdited || selectedImportIndex >= 0 || !!String(nameInput.value || '').trim();
+    nameFeedback.textContent = showNameFeedback ? validation.message : '';
+    nameFeedback.classList.toggle('is-error', showNameFeedback && !validation.ok);
+    nameInput.classList.toggle('is-invalid', showNameFeedback && !validation.ok);
+    if (el.entityModalConfirm) el.entityModalConfirm.disabled = selectedImportIndex < 0 || !validation.ok;
+  };
+
+  const selectImportSection = (index) => {
+    selectedImportIndex = index;
+    const section = importSections[index] || null;
+    if (section && !nameEdited) {
+      const sourceName = getSectionFieldValueCaseInsensitive(section, 'name') || config.fallbackName;
+      nameInput.value = makeUniqueSectionName(tab, sourceName, -1, config.fallbackName);
+    }
+    renderPicker();
+    updateConfirmButton();
+  };
+
+  function renderPicker() {
+    pickerHost.innerHTML = '';
+    if (!importFilePath) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = config.sourcePrompt;
+      pickerHost.appendChild(empty);
+      return;
+    }
+    if (importSections.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = config.emptySource;
+      pickerHost.appendChild(empty);
+      return;
+    }
+    const picker = createReferencePicker({
+      options: importSections.map((section, index) => {
+        const display = config.display(section, index);
+        return {
+          value: String(index),
+          label: display.secondary ? `${display.primary} (${display.secondary})` : display.primary,
+          displayLabel: display.primary,
+          entry: { section, index }
+        };
+      }),
+      targetTabKey: '',
+      currentValue: selectedImportIndex >= 0 ? String(selectedImportIndex) : '-1',
+      searchPlaceholder: config.searchPlaceholder,
+      noneLabel: config.noneLabel,
+      thumbClassName: config.thumbClassName,
+      renderOptionThumb: ({ holder, option }) => {
+        const index = Number.parseInt(String(option && option.value || ''), 10);
+        const section = Number.isFinite(index) ? importSections[index] : null;
+        if (!section) return false;
+        void config.loadThumb(section, holder, importFilePath, importScenarioPaths);
+        return true;
+      },
+      onSelect: (value) => {
+        const index = Number.parseInt(String(value || ''), 10);
+        if (!Number.isFinite(index) || index < 0 || index >= importSections.length) {
+          selectedImportIndex = -1;
+          updateConfirmButton();
+          return;
+        }
+        selectImportSection(index);
+      }
+    });
+    pickerHost.appendChild(picker);
+  }
+
+  const loadSource = async (source) => {
+    sourceSelect.disabled = true;
+    selectedImportIndex = -1;
+    importSections = [];
+    importFilePath = '';
+    importScenarioPaths = [];
+    renderPicker();
+    updateConfirmButton();
+    try {
+      const loaded = await loadImportSectionSections(source, tabKey);
+      importFilePath = String(loaded.importSourcePath || '').trim();
+      importScenarioPaths = Array.isArray(loaded.importScenarioPaths) ? loaded.importScenarioPaths : [];
+      importSections = loaded.sections;
+      renderPicker();
+      if (importSections.length === 0) {
+        setStatus(config.emptySource, true);
+      }
+    } catch (err) {
+      setStatus(err && err.message ? err.message : `Could not load ${config.statusName} import source.`, true);
+    } finally {
+      sourceSelect.disabled = false;
+      updateConfirmButton();
+    }
+  };
+
+  sourceSelect.addEventListener('change', async () => {
+    const value = String(sourceSelect.value || '');
+    if (!value) return;
+    if (value === '__manual__') {
+      const filePath = await window.c3xManager.pickFile({
+        filters: [{ name: 'BIQ Scenario Files', extensions: ['biq'] }]
+      });
+      if (!filePath) {
+        sourceSelect.value = importFilePath || '';
+        return;
+      }
+      const existingOpt = Array.from(sourceSelect.options).find((opt) => String(opt.value || '') === filePath);
+      if (existingOpt) {
+        sourceSelect.value = filePath;
+      } else {
+        const manual = document.createElement('option');
+        manual.value = filePath;
+        manual.textContent = getPathTail(filePath);
+        manual.title = filePath;
+        sourceSelect.insertBefore(manual, manualOption);
+        sourceSelect.value = filePath;
+      }
+      await loadSource({ scenarioPath: filePath });
+      return;
+    }
+    await loadSource({ scenarioPath: value });
+  });
+
+  nameInput.addEventListener('input', () => {
+    nameEdited = true;
+    updateConfirmButton();
+  });
+  renderPicker();
+  updateConfirmButton();
+
+  state.entityModal.open = true;
+  el.entityModalOverlay.classList.remove('hidden');
+  el.entityModalOverlay.setAttribute('aria-hidden', 'false');
+  window.setTimeout(() => sourceSelect.focus({ preventScroll: true }), 0);
+
+  return new Promise((resolve) => {
+    state.entityModal.resolve = resolve;
+    const onConfirm = () => {
+      const validation = validateName();
+      if (!validation.ok) {
+        setStatus(validation.message, true);
+        return;
+      }
+      const section = importSections[selectedImportIndex] || null;
+      if (!section || !importFilePath) {
+        setStatus(`Select one ${config.statusName} to import.`, true);
+        return;
+      }
+      resolveEntityModal({
+        importedSection: section,
+        name: String(nameInput.value || '').trim(),
+        importFilePath,
+        importScenarioPaths
+      });
+    };
+    const onCancel = () => resolveEntityModal(null);
+    if (el.entityModalConfirm) el.entityModalConfirm.onclick = onConfirm;
+    if (el.entityModalCancel) el.entityModalCancel.onclick = onCancel;
+  });
+}
+
+async function promptDistrictImportAction(tab) {
+  return promptSectionImportAction(tab, 'districts');
+}
+
 function getImportReferenceIndexMap(sourceMaps, tabKey) {
   const maps = sourceMaps && typeof sourceMaps === 'object' ? sourceMaps : {};
   const items = maps[tabKey];
@@ -45580,7 +47189,7 @@ function renderReferenceTab(tab, tabKey) {
     const maxToLoad = Math.max(1, Number(limit) || 24);
     if (maxToLoad <= 0 || !listPane.isConnected) return;
     const paneRect = listPane.getBoundingClientRect();
-    const maxConcurrentLoads = 8;
+    const maxConcurrentLoads = tabKey === 'animations' ? 3 : 8;
     const availableSlots = Math.max(0, maxConcurrentLoads - listThumbsInFlight.size);
     let remaining = Math.min(maxToLoad, availableSlots);
     let visiblePending = 0;
@@ -63995,6 +65604,13 @@ function createFieldInput(schemaField, value, onChange, options = {}) {
         input.value = normalized;
         onChange(normalized);
       });
+    } else if (isAnimationIniPathField(state.activeTab, schemaField.key)) {
+      input.addEventListener('blur', () => {
+        const normalized = normalizeAnimationIniRelativePath(input.value);
+        if (!normalized || normalized === input.value) return;
+        input.value = normalized;
+        onChange(normalized);
+      });
     }
     const browse = document.createElement('button');
     browse.type = 'button';
@@ -64003,9 +65619,12 @@ function createFieldInput(schemaField, value, onChange, options = {}) {
       const pickerOptions = getFilePickerOptionsForSectionField(schemaField, input.value);
       const filePath = await window.c3xManager.pickFile(pickerOptions);
       if (!filePath) return;
-      const nextPath = isSectionArtImagePathField(state.activeTab, schemaField.key)
-        ? normalizeScenarioArtRelativePath(filePath)
-        : filePath;
+      let nextPath = filePath;
+      if (isSectionArtImagePathField(state.activeTab, schemaField.key)) {
+        nextPath = normalizeScenarioArtRelativePath(filePath);
+      } else if (isAnimationIniPathField(state.activeTab, schemaField.key)) {
+        nextPath = normalizeAnimationIniRelativePath(filePath);
+      }
       input.value = nextPath;
       onChange(nextPath);
     });
@@ -64069,6 +65688,7 @@ function makeSegmentedSingleValueEditor(options, value, onValueChange, fieldKey 
   const iconRenderer = typeof config.iconRenderer === 'function' ? config.iconRenderer : null;
   const includeEmpty = config.includeEmpty !== false;
   const emptyLabel = String(config.emptyLabel || '(not set)');
+  const getLabel = typeof config.getLabel === 'function' ? config.getLabel : ((opt) => String(opt || '').trim());
   const selected = String(value || '').trim();
   const optionSet = new Set((Array.isArray(options) ? options : []).map((opt) => String(opt || '').trim()).filter(Boolean));
   if (selected) optionSet.add(selected);
@@ -64079,7 +65699,7 @@ function makeSegmentedSingleValueEditor(options, value, onValueChange, fieldKey 
     btn.type = 'button';
     btn.className = 'segmented-multi-btn';
     const text = document.createElement('span');
-    text.textContent = opt || emptyLabel;
+    text.textContent = opt ? getLabel(opt) : emptyLabel;
     if (opt) {
       let usedCustomIcon = false;
       if (iconRenderer) {
@@ -64192,6 +65812,14 @@ function makeDistrictImagePathPreview(pathValue) {
     holder.disabled = true;
   });
   return holder;
+}
+
+function formatAnimationTypeLabel(value) {
+  return String(value || '')
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
 }
 
 function getTokenColor(token, fieldKey = '') {
@@ -64611,14 +66239,37 @@ function composeDistrictCellPreviews(previews) {
   };
 }
 
-async function fetchDistrictRepresentativePreview(section) {
+function getDistrictPreviewRequestContext(options = {}) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const c3xPath = String(opts.c3xPath || state.settings && state.settings.c3xPath || '').trim();
+  const hasScenarioPath = Object.prototype.hasOwnProperty.call(opts, 'scenarioPath')
+    && opts.scenarioPath != null;
+  const hasScenarioPaths = Object.prototype.hasOwnProperty.call(opts, 'scenarioPaths')
+    && opts.scenarioPaths != null;
+  const scenarioPath = hasScenarioPath
+    ? String(opts.scenarioPath || '').trim()
+    : String(state.settings && state.settings.scenarioPath || '').trim();
+  const scenarioPaths = hasScenarioPaths
+    ? (Array.isArray(opts.scenarioPaths) ? opts.scenarioPaths.slice() : [])
+    : getScenarioPreviewPaths();
+  return {
+    c3xPath,
+    scenarioPath,
+    scenarioPaths,
+    scenarioPathsKey: JSON.stringify((Array.isArray(scenarioPaths) ? scenarioPaths : []).map((value) => toSlashPath(value)))
+  };
+}
+
+async function fetchDistrictRepresentativePreview(section, options = {}) {
   const spec = getDistrictPreviewSpec(section);
-  if (!spec || !state.settings || !state.settings.c3xPath) return null;
+  const previewContext = getDistrictPreviewRequestContext(options);
+  if (!spec || !previewContext.c3xPath) return null;
   const renderStrategy = getDistrictRenderStrategy(section);
   const autoKey = JSON.stringify({
     kind: 'district-representative-auto',
-    c3xPath: state.settings.c3xPath,
-    scenarioPath: state.settings.scenarioPath,
+    c3xPath: previewContext.c3xPath,
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPathsKey,
     fileName: spec.fileName,
     w: spec.cellW,
     h: spec.cellH,
@@ -64633,17 +66284,19 @@ async function fetchDistrictRepresentativePreview(section) {
   const pending = (async () => {
   const fullKey = JSON.stringify({
     kind: 'district-full',
-    c3xPath: state.settings.c3xPath,
+    c3xPath: previewContext.c3xPath,
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPathsKey,
     fileName: spec.fileName
   });
   let fullPreview = state.previewCache.get(fullKey) || null;
   if (!fullPreview) {
     const full = await window.c3xManager.getPreview({
       kind: 'district',
-      c3xPath: state.settings.c3xPath,
+      c3xPath: previewContext.c3xPath,
       fileName: spec.fileName,
-      scenarioPath: state.settings.scenarioPath,
-      scenarioPaths: getScenarioPreviewPaths()
+      scenarioPath: previewContext.scenarioPath,
+      scenarioPaths: previewContext.scenarioPaths
     });
     if (!full || !full.ok) return null;
     fullPreview = full;
@@ -64653,7 +66306,9 @@ async function fetchDistrictRepresentativePreview(section) {
   const col = findRightMostNonTransparentDistrictColumn(fullPreview, spec, row);
   const cropKey = JSON.stringify({
     kind: 'district-representative',
-    c3xPath: state.settings.c3xPath,
+    c3xPath: previewContext.c3xPath,
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPathsKey,
     fileName: spec.fileName,
     row,
     col,
@@ -64670,15 +66325,18 @@ async function fetchDistrictRepresentativePreview(section) {
     ? await fetchDistrictCellPreview(section, {
         cultureIndex: 0,
         eraIndex: row,
-        buildingCols: representativeBuildingCols
+        buildingCols: representativeBuildingCols,
+        c3xPath: previewContext.c3xPath,
+        scenarioPath: previewContext.scenarioPath,
+        scenarioPaths: previewContext.scenarioPaths
       })
     : await window.c3xManager.getPreview({
         kind: 'district',
-        c3xPath: state.settings.c3xPath,
+        c3xPath: previewContext.c3xPath,
         fileName: spec.fileName,
         crop: { row, col, w: spec.cellW, h: spec.cellH },
-        scenarioPath: state.settings.scenarioPath,
-        scenarioPaths: getScenarioPreviewPaths()
+        scenarioPath: previewContext.scenarioPath,
+        scenarioPaths: previewContext.scenarioPaths
       });
   if (!cropped || !cropped.ok) return null;
   const representative = {
@@ -64699,8 +66357,17 @@ async function fetchDistrictRepresentativePreview(section) {
   }
 }
 
-async function fetchDistrictSingleCellPreview(section, { cultureIndex = 0, eraIndex = 0, buildingCol = 0, fileNameOverride = '' } = {}) {
-  if (!state.settings || !state.settings.c3xPath) return null;
+async function fetchDistrictSingleCellPreview(section, {
+  cultureIndex = 0,
+  eraIndex = 0,
+  buildingCol = 0,
+  fileNameOverride = '',
+  c3xPath = undefined,
+  scenarioPath = undefined,
+  scenarioPaths = undefined
+} = {}) {
+  const previewContext = getDistrictPreviewRequestContext({ c3xPath, scenarioPath, scenarioPaths });
+  if (!previewContext.c3xPath) return null;
   const allPaths = getDistrictImagePaths(section);
   if (!allPaths.length) return null;
   const fileName = String(fileNameOverride || allPaths[Math.max(0, Math.min(cultureIndex, allPaths.length - 1))] || '');
@@ -64711,7 +66378,9 @@ async function fetchDistrictSingleCellPreview(section, { cultureIndex = 0, eraIn
   const cellH = Number.isFinite(customH) && customH > 0 ? customH : 64;
   const cropKey = JSON.stringify({
     kind: 'district-cell',
-    c3xPath: state.settings.c3xPath,
+    c3xPath: previewContext.c3xPath,
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPathsKey,
     fileName,
     row: eraIndex,
     col: buildingCol,
@@ -64722,21 +66391,39 @@ async function fetchDistrictSingleCellPreview(section, { cultureIndex = 0, eraIn
   if (cached) return cached;
   const result = await window.c3xManager.getPreview({
     kind: 'district',
-    c3xPath: state.settings.c3xPath,
+    c3xPath: previewContext.c3xPath,
     fileName,
     crop: { row: eraIndex, col: buildingCol, w: cellW, h: cellH },
-    scenarioPath: state.settings.scenarioPath,
-    scenarioPaths: getScenarioPreviewPaths()
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPaths
   });
   if (!result || !result.ok) return null;
   setPreviewCache(cropKey, result);
   return result;
 }
 
-async function fetchDistrictCellPreview(section, { cultureIndex = 0, eraIndex = 0, buildingCol = 0, buildingCols = null, fileNameOverride = '' } = {}) {
+async function fetchDistrictCellPreview(section, {
+  cultureIndex = 0,
+  eraIndex = 0,
+  buildingCol = 0,
+  buildingCols = null,
+  fileNameOverride = '',
+  c3xPath = undefined,
+  scenarioPath = undefined,
+  scenarioPaths = undefined
+} = {}) {
+  const previewContext = getDistrictPreviewRequestContext({ c3xPath, scenarioPath, scenarioPaths });
   const renderStrategy = getDistrictRenderStrategy(section);
   if (renderStrategy !== 'by-building') {
-    return fetchDistrictSingleCellPreview(section, { cultureIndex, eraIndex, buildingCol, fileNameOverride });
+    return fetchDistrictSingleCellPreview(section, {
+      cultureIndex,
+      eraIndex,
+      buildingCol,
+      fileNameOverride,
+      c3xPath: previewContext.c3xPath,
+      scenarioPath: previewContext.scenarioPath,
+      scenarioPaths: previewContext.scenarioPaths
+    });
   }
   const allPaths = getDistrictImagePaths(section);
   const fileName = String(fileNameOverride || allPaths[Math.max(0, Math.min(cultureIndex, allPaths.length - 1))] || '');
@@ -64747,12 +66434,20 @@ async function fetchDistrictCellPreview(section, { cultureIndex = 0, eraIndex = 
   )).sort((a, b) => a - b);
   const compositeCols = [0, ...normalizedCols];
   if (compositeCols.length === 1) {
-    return fetchDistrictSingleCellPreview(section, { cultureIndex, eraIndex, buildingCol: 0 });
+    return fetchDistrictSingleCellPreview(section, {
+      cultureIndex,
+      eraIndex,
+      buildingCol: 0,
+      c3xPath: previewContext.c3xPath,
+      scenarioPath: previewContext.scenarioPath,
+      scenarioPaths: previewContext.scenarioPaths
+    });
   }
   const cacheKey = JSON.stringify({
     kind: 'district-cell-composite',
-    c3xPath: state.settings && state.settings.c3xPath,
-    scenarioPath: state.settings && state.settings.scenarioPath,
+    c3xPath: previewContext.c3xPath,
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPathsKey,
     fileName,
     cultureIndex,
     eraIndex,
@@ -64764,7 +66459,10 @@ async function fetchDistrictCellPreview(section, { cultureIndex = 0, eraIndex = 
     cultureIndex,
     eraIndex,
     buildingCol: col,
-    fileNameOverride: fileName
+    fileNameOverride: fileName,
+    c3xPath: previewContext.c3xPath,
+    scenarioPath: previewContext.scenarioPath,
+    scenarioPaths: previewContext.scenarioPaths
   })));
   const composed = composeDistrictCellPreviews(parts);
   if (!composed) return null;
@@ -64772,7 +66470,7 @@ async function fetchDistrictCellPreview(section, { cultureIndex = 0, eraIndex = 
   return composed;
 }
 
-function loadDistrictRepresentativePreview(section, holder, canvasSize = 28, onLoaded = null) {
+function loadDistrictRepresentativePreview(section, holder, canvasSize = 28, onLoaded = null, options = {}) {
   if (!holder) return Promise.resolve(false);
   holder.innerHTML = '';
   const canvas = document.createElement('canvas');
@@ -64780,7 +66478,7 @@ function loadDistrictRepresentativePreview(section, holder, canvasSize = 28, onL
   canvas.height = canvasSize;
   canvas.className = 'entry-thumb-canvas';
   holder.appendChild(canvas);
-  return fetchDistrictRepresentativePreview(section)
+  return fetchDistrictRepresentativePreview(section, options)
     .then((preview) => {
       if (!preview || !holder.isConnected) return false;
       drawPreviewFrameToCanvas(preview, canvas);
@@ -64791,7 +66489,7 @@ function loadDistrictRepresentativePreview(section, holder, canvasSize = 28, onL
     .catch(() => false);
 }
 
-function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
+function loadWonderCompletedThumbnail(section, holder, canvasSize = 35, options = {}) {
   if (!holder) return Promise.resolve(false);
   holder.innerHTML = '';
   const canvas = document.createElement('canvas');
@@ -64807,7 +66505,8 @@ function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
   const cacheKey = JSON.stringify({
     kind: 'wonder-list-thumb',
     c3xPath: state.settings.c3xPath,
-    scenarioPath: state.settings.scenarioPath,
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths(),
     fileName,
     row,
     col,
@@ -64827,8 +66526,8 @@ function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
     c3xPath: state.settings.c3xPath,
     fileName,
     crop: { row, col, w: crop.w, h: crop.h },
-    scenarioPath: state.settings.scenarioPath,
-    scenarioPaths: getScenarioPreviewPaths()
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths()
   }).then((res) => {
     if (!res || !res.ok) return false;
     setPreviewCache(cacheKey, res);
@@ -64836,7 +66535,7 @@ function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
   }).catch(() => false);
 }
 
-function loadNaturalWonderThumbnail(section, holder, canvasSize = 35) {
+function loadNaturalWonderThumbnail(section, holder, canvasSize = 35, options = {}) {
   if (!holder) return Promise.resolve(false);
   holder.innerHTML = '';
   const canvas = document.createElement('canvas');
@@ -64853,7 +66552,8 @@ function loadNaturalWonderThumbnail(section, holder, canvasSize = 35) {
   const cacheKey = JSON.stringify({
     kind: 'natural-wonder-list-thumb',
     c3xPath: state.settings.c3xPath,
-    scenarioPath: state.settings.scenarioPath,
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths(),
     fileName,
     row,
     col,
@@ -64873,8 +66573,55 @@ function loadNaturalWonderThumbnail(section, holder, canvasSize = 35) {
     c3xPath: state.settings.c3xPath,
     fileName,
     crop: { row, col, w: crop.w, h: crop.h },
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths()
+  }).then((res) => {
+    if (!res || !res.ok) return false;
+    setPreviewCache(cacheKey, res);
+    return paint(res);
+  }).catch(() => false);
+}
+
+function loadAnimationThumbnail(section, holder, canvasSize = 35) {
+  if (!holder) return Promise.resolve(false);
+  holder.innerHTML = '';
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+  canvas.className = 'entry-thumb-canvas';
+  holder.appendChild(canvas);
+  if (!state.settings || !state.settings.c3xPath) return Promise.resolve(false);
+  const iniPath = normalizeAnimationIniRelativePath(getFieldValue(section, 'ini_path'));
+  if (!iniPath) return Promise.resolve(false);
+  const directionIndex = resolveAnimationDirectionIndex(section);
+  const scenarioPaths = getScenarioPreviewPaths();
+  const cacheKey = JSON.stringify({
+    kind: 'animation-list-thumb',
+    c3xPath: state.settings.c3xPath,
     scenarioPath: state.settings.scenarioPath,
-    scenarioPaths: getScenarioPreviewPaths()
+    scenarioPaths,
+    iniPath,
+    directionIndex,
+    frameOffset: 'middle',
+    maxFrames: 1
+  });
+  const paint = (preview) => {
+    if (!preview) return false;
+    drawPreviewFrameToCanvas(preview, canvas, { frameIndex: 0, transparentMagenta: true });
+    return true;
+  };
+  if (state.previewCache.has(cacheKey)) {
+    return Promise.resolve(paint(state.previewCache.get(cacheKey)));
+  }
+  return window.c3xManager.getPreview({
+    kind: 'animationIni',
+    c3xPath: state.settings.c3xPath,
+    iniPath,
+    directionIndex,
+    frameOffset: 'middle',
+    maxFrames: 1,
+    scenarioPath: state.settings.scenarioPath,
+    scenarioPaths
   }).then((res) => {
     if (!res || !res.ok) return false;
     setPreviewCache(cacheKey, res);
@@ -65063,6 +66810,94 @@ function renderDistrictRepresentativePreviewCard(section, previewWrap, titleForF
     syncPickerButtons();
     card.classList.remove('district-preview-initializing');
     refreshPreview();
+  });
+}
+
+function renderSectionAnimationPreviewCard(section, previewWrap, tabKey, isCurrent = null) {
+  if (!previewWrap) return;
+  const firstAnimationSpec = getFieldValuesRaw(section, 'animation').find((spec) => getNaturalWonderAnimationIniPath(spec));
+  if (!firstAnimationSpec) return;
+  const animationSpec = parseNaturalWonderAnimationSpec(firstAnimationSpec);
+  const iniPath = getNaturalWonderAnimationIniPath(firstAnimationSpec);
+  const directionIndex = resolveAnimationDirectionIndexFromValue(animationSpec.direction);
+  const stillCurrent = typeof isCurrent === 'function' ? isCurrent : (() => true);
+  window.c3xManager.getPreview({
+    kind: 'animationIni',
+    c3xPath: state.settings.c3xPath,
+    iniPath,
+    directionIndex,
+    scenarioPath: state.settings.scenarioPath,
+    scenarioPaths: getScenarioPreviewPaths()
+  }).then((res) => {
+    if (!stillCurrent() || !res || !res.ok || !previewWrap.isConnected) return;
+    renderRgbaPreview(
+      previewWrap,
+      res,
+      'Animation',
+      () => getPreviewDelayMs(tabKey, section, 'Animation'),
+      Math.max(120, Math.round(state.previewSize * 0.72)),
+      { skipBlankMagentaFrames: true }
+    );
+  }).catch(() => {});
+}
+
+function getAnimationSpecDelayMs(entry) {
+  const seconds = Number.parseFloat(entry && entry.frame_time_seconds);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.max(16, Math.round(seconds * 1000)) : 100;
+}
+
+function renderAnimationSpecInlinePreview(entry, host) {
+  if (!host) return;
+  const iniPath = normalizeAnimationIniRelativePath(entry && entry.ini);
+  host.innerHTML = '';
+  const empty = (message) => {
+    const hint = document.createElement('div');
+    hint.className = 'hint natural-animation-preview-empty';
+    hint.textContent = message;
+    host.appendChild(hint);
+  };
+  if (!iniPath) {
+    empty('No preview');
+    return;
+  }
+  if (!window.c3xManager || typeof window.c3xManager.getPreview !== 'function') {
+    empty('Preview unavailable');
+    return;
+  }
+  const directionIndex = resolveAnimationDirectionIndexFromValue(entry && entry.direction);
+  const previewKey = JSON.stringify({
+    iniPath,
+    directionIndex,
+    scenarioPath: state.settings && state.settings.scenarioPath,
+    scenarioPaths: getScenarioPreviewPathsKey()
+  });
+  host.dataset.previewKey = previewKey;
+  window.c3xManager.getPreview({
+    kind: 'animationIni',
+    c3xPath: state.settings.c3xPath,
+    iniPath,
+    directionIndex,
+    scenarioPath: state.settings.scenarioPath,
+    scenarioPaths: getScenarioPreviewPaths()
+  }).then((res) => {
+    if (!host.isConnected || host.dataset.previewKey !== previewKey) return;
+    host.innerHTML = '';
+    if (!res || !res.ok) {
+      empty('Preview unavailable');
+      return;
+    }
+    renderRgbaPreview(
+      host,
+      res,
+      'Preview',
+      () => getAnimationSpecDelayMs(entry),
+      Math.max(96, Math.round(state.previewSize * 0.45)),
+      { skipBlankMagentaFrames: true }
+    );
+  }).catch(() => {
+    if (!host.isConnected || host.dataset.previewKey !== previewKey) return;
+    host.innerHTML = '';
+    empty('Preview unavailable');
   });
 }
 
@@ -65562,7 +67397,7 @@ function serializeAnimationAdjacentToToken(entry) {
 
 function renderAnimationAdjacentToEditor(section, onValueChange) {
   const wrap = document.createElement('div');
-  wrap.className = 'structured-list';
+  wrap.className = 'structured-list animation-adjacent-list';
   const terrainBase = [...TERRAIN_OPTIONS, 'land', 'river', 'lake', 'coast', 'sea', 'ocean'];
   const rawTokens = tokenizeListPreservingQuotes(getFieldValue(section, 'adjacent_to'));
   const rows = rawTokens.map((token) => parseAnimationAdjacentToToken(token)).filter((entry) => !!entry.terrain);
@@ -65581,46 +67416,57 @@ function renderAnimationAdjacentToEditor(section, onValueChange) {
     wrap.innerHTML = '';
     rows.forEach((entry, idx) => {
       const line = document.createElement('div');
-      line.className = 'kv-row compact';
+      line.className = 'animation-adjacent-rule';
 
-      const terrainSelect = document.createElement('select');
       const terrainOpts = Array.from(new Set([...terrainBase, ...rows.map((item) => normalizeConfigToken(item.terrain)).filter(Boolean)]));
-      const terrainEmpty = document.createElement('option');
-      terrainEmpty.value = '';
-      terrainEmpty.textContent = 'Terrain...';
-      terrainSelect.appendChild(terrainEmpty);
-      terrainOpts.forEach((opt) => {
-        const node = document.createElement('option');
-        node.value = opt;
-        node.textContent = opt;
-        terrainSelect.appendChild(node);
-      });
-      terrainSelect.value = normalizeConfigToken(entry.terrain);
-      terrainSelect.addEventListener('change', () => {
-        rows[idx].terrain = terrainSelect.value;
-        commit();
-      });
-      line.appendChild(terrainSelect);
+      const terrainGroup = document.createElement('div');
+      terrainGroup.className = 'animation-adjacent-chip-group';
+      const terrainLabel = document.createElement('div');
+      terrainLabel.className = 'animation-adjacent-chip-label';
+      terrainLabel.textContent = 'Terrain';
+      terrainGroup.appendChild(terrainLabel);
+      terrainGroup.appendChild(makeSegmentedSingleValueEditor(
+        terrainOpts,
+        normalizeConfigToken(entry.terrain),
+        (nextValue) => {
+          rows[idx].terrain = String(nextValue || '').trim();
+          commit();
+          renderRows();
+        },
+        'adjacent_to',
+        {
+          includeEmpty: false,
+          iconRenderer: (optionName) => makeTerrainOptionPreviewIcon(optionName)
+        }
+      ));
+      line.appendChild(terrainGroup);
 
-      const dirSelect = document.createElement('select');
-      const dirEmpty = document.createElement('option');
-      dirEmpty.value = '';
-      dirEmpty.textContent = '(any direction)';
-      dirSelect.appendChild(dirEmpty);
       const dirOptions = Array.from(new Set([...DIRECTION_OPTIONS, ...rows.map((item) => normalizeConfigToken(item.direction).toLowerCase()).filter(Boolean)]));
-      dirOptions.forEach((opt) => {
-        const node = document.createElement('option');
-        node.value = opt;
-        node.textContent = opt;
-        dirSelect.appendChild(node);
-      });
-      dirSelect.value = normalizeConfigToken(entry.direction).toLowerCase();
-      dirSelect.addEventListener('change', () => {
-        rows[idx].direction = dirSelect.value;
-        commit();
-      });
-      line.appendChild(dirSelect);
+      const directionGroup = document.createElement('div');
+      directionGroup.className = 'animation-adjacent-chip-group';
+      const directionLabel = document.createElement('div');
+      directionLabel.className = 'animation-adjacent-chip-label';
+      directionLabel.textContent = 'Direction';
+      directionGroup.appendChild(directionLabel);
+      directionGroup.appendChild(makeSegmentedSingleValueEditor(
+        dirOptions,
+        normalizeConfigToken(entry.direction).toLowerCase(),
+        (nextValue) => {
+          rows[idx].direction = String(nextValue || '').trim().toLowerCase();
+          commit();
+          renderRows();
+        },
+        'adjacent_to_direction',
+        {
+          includeEmpty: true,
+          emptyLabel: '(any direction)',
+          showTokenIcon: false
+        }
+      ));
+      line.appendChild(directionGroup);
 
+      const actions = document.createElement('div');
+      actions.className = 'animation-adjacent-rule-actions';
       const del = document.createElement('button');
       del.type = 'button';
       withRemoveIcon(del, ' Remove');
@@ -65630,7 +67476,8 @@ function renderAnimationAdjacentToEditor(section, onValueChange) {
         commit();
         renderRows();
       });
-      line.appendChild(del);
+      actions.appendChild(del);
+      line.appendChild(actions);
       wrap.appendChild(line);
     });
 
@@ -65648,11 +67495,24 @@ function renderAnimationAdjacentToEditor(section, onValueChange) {
   return wrap;
 }
 
-function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
+function renderNaturalWonderAnimationSpecsEditor(section, onValueChange, config = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'natural-animation-spec-list';
+  const includeDirection = !(config && config.includeDirection === false);
+  const includeCultures = !!(config && config.includeCultures);
+  const includeEras = !!(config && config.includeEras);
+  const emptyText = String(config && config.emptyText || 'No animation specs configured.');
+  const serializeOptions = {
+    includeDirection,
+    includeCultures,
+    includeEras
+  };
   const rawSpecs = getFieldValuesRaw(section, 'animation');
   const specs = rawSpecs.map((raw) => parseNaturalWonderAnimationSpec(raw));
+  specs.forEach((entry) => {
+    const normalizedIni = normalizeAnimationIniRelativePath(entry.ini);
+    if (normalizedIni) entry.ini = normalizedIni;
+  });
   const animationUndoKey = getSectionItemUndoKey(section);
   const wireAnimationGroupedUndo = (input, keySuffix, getValue = null) => {
     wireGroupedUndoSession(input, {
@@ -65661,22 +67521,11 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
       getValue: typeof getValue === 'function' ? getValue : (() => String(input && input.value || ''))
     });
   };
-  const adjacencyDirection = String(getFieldValue(section, 'adjacency_dir') || '').trim();
-  if (adjacencyDirection) {
-    specs.forEach((entry) => {
-      entry.direction = adjacencyDirection;
-    });
-  }
 
   const commit = (config = null) => {
     const shouldNotify = !(config && config.notify === false);
-    if (adjacencyDirection) {
-      specs.forEach((entry) => {
-        entry.direction = adjacencyDirection;
-      });
-    }
     const serialized = specs
-      .map((entry) => serializeNaturalWonderAnimationSpec(entry))
+      .map((entry) => serializeNaturalWonderAnimationSpec(entry, serializeOptions))
       .map((entry) => String(entry || '').trim())
       .filter(Boolean);
     setMultiFieldValues(section, 'animation', serialized, {
@@ -65685,49 +67534,26 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
     if (shouldNotify && onValueChange) onValueChange('animation', serialized.join('\n'));
   };
 
-  const addExtraRow = (entry, extrasWrap, valueChangeHook) => {
-    const extra = { key: '', value: '' };
-    entry.extras.push(extra);
-    valueChangeHook();
-    const row = document.createElement('div');
-    row.className = 'kv-row compact';
-    const keyInput = document.createElement('input');
-    keyInput.type = 'text';
-    keyInput.placeholder = 'key';
-    keyInput.value = '';
-    wireAnimationGroupedUndo(keyInput, `new-extra-key:${entry.extras.length}`);
-    keyInput.addEventListener('input', () => {
-      extra.key = keyInput.value;
-      valueChangeHook({ captureUndo: false });
-    });
-    const valueInput = document.createElement('input');
-    valueInput.type = 'text';
-    valueInput.placeholder = 'value';
-    valueInput.value = '';
-    wireAnimationGroupedUndo(valueInput, `new-extra-value:${entry.extras.length}`);
-    valueInput.addEventListener('input', () => {
-      extra.value = valueInput.value;
-      valueChangeHook({ captureUndo: false });
-    });
-    const del = document.createElement('button');
-    del.type = 'button';
-    withRemoveIcon(del, ' Remove');
-    del.addEventListener('click', () => {
-      const idx = entry.extras.indexOf(extra);
-      if (idx >= 0) entry.extras.splice(idx, 1);
-      valueChangeHook();
-      row.remove();
-    });
-    row.appendChild(keyInput);
-    row.appendChild(valueInput);
-    row.appendChild(del);
-    extrasWrap.appendChild(row);
-  };
+  const makeEmptyAnimationSpec = () => ({
+    ini: '',
+    frame_time_seconds: '',
+    x_offset: '',
+    y_offset: '',
+    direction: '',
+    show_in_day_night_hours: '',
+    show_in_seasons: '',
+    show_in_cultures: '',
+    show_in_eras: '',
+    extras: []
+  });
+
+  const renderSpecs = () => {
+  wrap.innerHTML = '';
 
   if (specs.length === 0) {
     const hint = document.createElement('div');
     hint.className = 'hint';
-    hint.textContent = 'No animation specs configured.';
+    hint.textContent = emptyText;
     wrap.appendChild(hint);
   }
 
@@ -65737,8 +67563,12 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
 
     const top = document.createElement('div');
     top.className = 'section-top';
-    top.innerHTML = `<strong>Animation ${idx + 1}</strong><span class="hint">Rendered from this natural wonder tile</span>`;
+    top.innerHTML = `<strong>Animation ${idx + 1}</strong>`;
     card.appendChild(top);
+
+    const topControls = document.createElement('div');
+    topControls.className = 'natural-animation-top-controls';
+    let refreshInlinePreview = () => {};
 
     const iniWrap = document.createElement('div');
     iniWrap.className = 'path-input-with-btn';
@@ -65751,31 +67581,38 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
       entry.ini = iniInput.value;
       commit({ captureUndo: false });
     });
+    iniInput.addEventListener('blur', () => {
+      const nextPath = normalizeAnimationIniRelativePath(iniInput.value);
+      if (nextPath && nextPath !== iniInput.value) {
+        iniInput.value = nextPath;
+        entry.ini = nextPath;
+        commit();
+      }
+      refreshInlinePreview();
+    });
     const iniBrowse = document.createElement('button');
     iniBrowse.type = 'button';
     iniBrowse.textContent = 'Browse';
     iniBrowse.addEventListener('click', async () => {
       const filePath = await window.c3xManager.pickFile(getFilePickerOptionsForSectionField({ key: 'ini_path' }, iniInput.value));
       if (!filePath) return;
-      iniInput.value = filePath;
-      entry.ini = filePath;
+      const nextPath = normalizeAnimationIniRelativePath(filePath);
+      iniInput.value = nextPath;
+      entry.ini = nextPath;
       commit();
+      refreshInlinePreview();
     });
     iniWrap.appendChild(iniInput);
     iniWrap.appendChild(iniBrowse);
-    card.appendChild(iniWrap);
 
     const grid = document.createElement('div');
     grid.className = 'kv-grid natural-animation-spec-grid';
 
     const frameWrap = document.createElement('label');
-    frameWrap.className = 'hint';
+    frameWrap.className = 'hint natural-animation-frame-inline';
     frameWrap.textContent = 'Frame Time (seconds)';
     const frameRow = document.createElement('div');
-    frameRow.style.display = 'grid';
-    frameRow.style.gridTemplateColumns = 'minmax(0, 1fr) auto';
-    frameRow.style.gap = '8px';
-    frameRow.style.alignItems = 'center';
+    frameRow.className = 'natural-animation-frame-row';
     const frameInput = document.createElement('input');
     frameInput.type = 'range';
     frameInput.min = '0.02';
@@ -65802,7 +67639,16 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
     frameRow.appendChild(frameInput);
     frameRow.appendChild(frameValueText);
     frameWrap.appendChild(frameRow);
-    grid.appendChild(frameWrap);
+    topControls.appendChild(iniWrap);
+    topControls.appendChild(frameWrap);
+    const previewHost = document.createElement('div');
+    previewHost.className = 'natural-animation-inline-preview';
+    topControls.appendChild(previewHost);
+    refreshInlinePreview = () => renderAnimationSpecInlinePreview(entry, previewHost);
+    card.appendChild(topControls);
+
+    const offsetsRow = document.createElement('div');
+    offsetsRow.className = 'natural-animation-offset-row';
 
     const xWrap = document.createElement('label');
     xWrap.className = 'hint';
@@ -65816,7 +67662,7 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
       commit({ captureUndo: false });
     });
     xWrap.appendChild(xInput);
-    grid.appendChild(xWrap);
+    offsetsRow.appendChild(xWrap);
 
     const yWrap = document.createElement('label');
     yWrap.className = 'hint';
@@ -65830,75 +67676,28 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
       commit({ captureUndo: false });
     });
     yWrap.appendChild(yInput);
-    grid.appendChild(yWrap);
+    offsetsRow.appendChild(yWrap);
+    grid.appendChild(offsetsRow);
 
-    const dirWrap = document.createElement('div');
-    dirWrap.className = 'hint';
-    dirWrap.textContent = 'Direction (from Adjacency Direction)';
-    const dirChips = makeSegmentedSingleValueEditor(
-      DIRECTION_OPTIONS,
-      adjacencyDirection || entry.direction || '',
-      null,
-      'direction',
-      { includeEmpty: true, showTokenIcon: false }
-    );
-    dirChips.classList.add('natural-animation-readonly-chips');
-    Array.from(dirChips.querySelectorAll('button')).forEach((btn) => {
-      btn.disabled = true;
-      btn.tabIndex = -1;
-    });
-    dirWrap.appendChild(dirChips);
-    grid.appendChild(dirWrap);
-
-    const dayNightWrap = document.createElement('div');
-    dayNightWrap.className = 'hint';
-    dayNightWrap.textContent = 'Day/Night Hours';
-    const hourState = new Set(parseDayNightHoursSpec(entry.show_in_day_night_hours));
-    const quickActions = document.createElement('div');
-    quickActions.className = 'inline-btn-row';
-    const allHoursBtn = document.createElement('button');
-    allHoursBtn.type = 'button';
-    allHoursBtn.className = 'ghost';
-    allHoursBtn.textContent = 'All';
-    allHoursBtn.addEventListener('click', () => {
-      hourState.clear();
-      for (let h = 0; h < 24; h += 1) hourState.add(h);
-      entry.show_in_day_night_hours = serializeDayNightHoursSpec(Array.from(hourState));
-      commit();
-      renderActiveTab({ preserveTabScroll: true });
-    });
-    const clearHoursBtn = document.createElement('button');
-    clearHoursBtn.type = 'button';
-    clearHoursBtn.className = 'ghost';
-    clearHoursBtn.textContent = 'None';
-    clearHoursBtn.addEventListener('click', () => {
-      hourState.clear();
-      entry.show_in_day_night_hours = '';
-      commit();
-      renderActiveTab({ preserveTabScroll: true });
-    });
-    quickActions.appendChild(allHoursBtn);
-    quickActions.appendChild(clearHoursBtn);
-    dayNightWrap.appendChild(quickActions);
-    const hoursGrid = document.createElement('div');
-    hoursGrid.className = 'natural-animation-hours-grid';
-    for (let h = 0; h < 24; h += 1) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'segmented-multi-btn';
-      btn.textContent = String(h);
-      btn.classList.toggle('active', hourState.has(h));
-      btn.addEventListener('click', () => {
-        if (hourState.has(h)) hourState.delete(h);
-        else hourState.add(h);
-        btn.classList.toggle('active', hourState.has(h));
-        entry.show_in_day_night_hours = serializeDayNightHoursSpec(Array.from(hourState));
-        commit();
-      });
-      hoursGrid.appendChild(btn);
+    if (includeDirection) {
+      const dirWrap = document.createElement('div');
+      dirWrap.className = 'hint';
+      dirWrap.textContent = 'Direction';
+      const dirChips = makeSegmentedSingleValueEditor(
+        DIRECTION_OPTIONS,
+        entry.direction || '',
+        (nextValue) => {
+          entry.direction = nextValue;
+          commit();
+          refreshInlinePreview();
+        },
+        'direction',
+        { includeEmpty: true, showTokenIcon: false }
+      );
+      dirChips.classList.add('natural-animation-direction-chips');
+      dirWrap.appendChild(dirChips);
+      grid.appendChild(dirWrap);
     }
-    dayNightWrap.appendChild(hoursGrid);
-    grid.appendChild(dayNightWrap);
 
     const seasonsWrap = document.createElement('div');
     seasonsWrap.className = 'hint';
@@ -65912,96 +67711,79 @@ function renderNaturalWonderAnimationSpecsEditor(section, onValueChange) {
     });
     seasonsWrap.appendChild(seasonChips);
     grid.appendChild(seasonsWrap);
-    card.appendChild(grid);
 
-    const extrasBlock = document.createElement('div');
-    extrasBlock.className = 'multi-value-group';
-    const extrasTitle = document.createElement('div');
-    extrasTitle.className = 'hint';
-    extrasTitle.textContent = 'Extra Parameters';
-    extrasBlock.appendChild(extrasTitle);
-    const extrasRows = document.createElement('div');
-    extrasRows.className = 'kv-grid';
-    const refreshExtras = (config = null) => {
-      commit(config);
-    };
-    (Array.isArray(entry.extras) ? entry.extras : []).forEach((extra) => {
-      const row = document.createElement('div');
-      row.className = 'kv-row compact';
-      const keyInput = document.createElement('input');
-      keyInput.type = 'text';
-      keyInput.placeholder = 'key';
-      keyInput.value = String(extra && extra.key || '');
-      wireAnimationGroupedUndo(keyInput, `extra-key:${idx}:${String(extra && extra.key || '')}`);
-      keyInput.addEventListener('input', () => {
-        extra.key = keyInput.value;
-        refreshExtras({ captureUndo: false });
+    if (includeCultures) {
+      const culturesWrap = document.createElement('div');
+      culturesWrap.className = 'hint';
+      culturesWrap.textContent = 'Cultures';
+      const cultureValues = tokenizeListPreservingQuotes(entry.show_in_cultures || '').map((v) => String(v || '').trim()).filter(Boolean);
+      const cultureChips = makeSegmentedMultiValueEditor(DISTRICT_ANIMATION_CULTURE_OPTIONS, cultureValues, (nextValues) => {
+        entry.show_in_cultures = nextValues.join(', ');
+        commit();
+      }, 'animation_cultures', {
+        showTokenIcon: false
       });
-      const valueInput = document.createElement('input');
-      valueInput.type = 'text';
-      valueInput.placeholder = 'value';
-      valueInput.value = String(extra && extra.value || '');
-      wireAnimationGroupedUndo(valueInput, `extra-value:${idx}:${String(extra && extra.key || '')}`);
-      valueInput.addEventListener('input', () => {
-        extra.value = valueInput.value;
-        refreshExtras({ captureUndo: false });
+      culturesWrap.appendChild(cultureChips);
+      grid.appendChild(culturesWrap);
+    }
+
+    if (includeEras) {
+      const erasWrap = document.createElement('div');
+      erasWrap.className = 'hint';
+      erasWrap.textContent = 'Eras';
+      const eraValues = tokenizeListPreservingQuotes(entry.show_in_eras || '').map((v) => String(v || '').trim()).filter(Boolean);
+      const eraChips = makeSegmentedMultiValueEditor(DISTRICT_ANIMATION_ERA_OPTIONS, eraValues, (nextValues) => {
+        entry.show_in_eras = nextValues.join(', ');
+        commit();
+      }, 'animation_eras', {
+        showTokenIcon: false
       });
-      const del = document.createElement('button');
-      del.type = 'button';
-      withRemoveIcon(del, ' Remove');
-      del.addEventListener('click', () => {
-        const extraIdx = entry.extras.indexOf(extra);
-        if (extraIdx >= 0) entry.extras.splice(extraIdx, 1);
-        refreshExtras();
-        row.remove();
-      });
-      row.appendChild(keyInput);
-      row.appendChild(valueInput);
-      row.appendChild(del);
-      extrasRows.appendChild(row);
+      erasWrap.appendChild(eraChips);
+      grid.appendChild(erasWrap);
+    }
+
+    const dayNightWrap = document.createElement('div');
+    dayNightWrap.className = 'hint natural-animation-day-night-row';
+    dayNightWrap.textContent = 'Day/Night Hours';
+    const hoursInput = document.createElement('input');
+    hoursInput.type = 'text';
+    hoursInput.placeholder = 'Example: 7-17, 22';
+    hoursInput.value = entry.show_in_day_night_hours || '';
+    wireAnimationGroupedUndo(hoursInput, `hours:${idx}`);
+    hoursInput.addEventListener('input', () => {
+      entry.show_in_day_night_hours = hoursInput.value;
+      commit({ captureUndo: false });
     });
-    extrasBlock.appendChild(extrasRows);
-    const addExtra = document.createElement('button');
-    addExtra.type = 'button';
-    addExtra.textContent = 'Add Extra Param';
-    addExtra.addEventListener('click', () => {
-      addExtraRow(entry, extrasRows, refreshExtras);
-    });
-    extrasBlock.appendChild(addExtra);
-    card.appendChild(extrasBlock);
+    dayNightWrap.appendChild(hoursInput);
+    grid.appendChild(dayNightWrap);
+
+    card.appendChild(grid);
 
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'danger';
-    remove.innerHTML = '<span class="btn-icon">🗑</span>Remove Animation';
+    remove.className = 'ghost';
+    withRemoveIcon(remove, ' Remove');
     remove.addEventListener('click', () => {
       specs.splice(idx, 1);
       commit();
-      renderActiveTab({ preserveTabScroll: true });
+      renderSpecs();
     });
     card.appendChild(remove);
     wrap.appendChild(card);
+    refreshInlinePreview();
   });
 
   const add = document.createElement('button');
   add.type = 'button';
   add.textContent = 'Add Animation';
   add.addEventListener('click', () => {
-    specs.push({
-      ini: '',
-      frame_time_seconds: '',
-      x_offset: '',
-      y_offset: '',
-      direction: '',
-      show_in_day_night_hours: '',
-      show_in_seasons: '',
-      extras: []
-    });
-    commit();
-    renderActiveTab({ preserveTabScroll: true });
+    specs.push(makeEmptyAnimationSpec());
+    renderSpecs();
   });
   wrap.appendChild(add);
+  };
 
+  renderSpecs();
   return wrap;
 }
 
@@ -66153,6 +67935,17 @@ function renderKnownField(section, schemaField, fieldDocs, onValueChange) {
 
   if (state.activeTab === 'naturalWonders' && effectiveField.key === 'animation') {
     controlWrap.appendChild(renderNaturalWonderAnimationSpecsEditor(section, onValueChange));
+    row.appendChild(controlWrap);
+    return row;
+  }
+
+  if (state.activeTab === 'districts' && effectiveField.key === 'animation') {
+    controlWrap.appendChild(renderNaturalWonderAnimationSpecsEditor(section, onValueChange, {
+      includeDirection: false,
+      includeCultures: true,
+      includeEras: true,
+      emptyText: 'No district animation specs configured.'
+    }));
     row.appendChild(controlWrap);
     return row;
   }
@@ -66365,7 +68158,7 @@ function renderKnownField(section, schemaField, fieldDocs, onValueChange) {
     return row;
   }
 
-  const districtSingleChoiceKeys = new Set(['render_strategy', 'ai_build_strategy']);
+  const districtSingleChoiceKeys = new Set(['render_strategy', 'type', 'ai_build_strategy']);
   if (state.activeTab === 'districts' && districtSingleChoiceKeys.has(effectiveField.key) && Array.isArray(effectiveField.options) && effectiveField.options.length > 0) {
     const chips = makeSegmentedSingleValueEditor(
       effectiveField.options,
@@ -66434,6 +68227,27 @@ function renderKnownField(section, schemaField, fieldDocs, onValueChange) {
     return row;
   }
 
+  if (state.activeTab === 'animations' && effectiveField.key === 'type') {
+    const chips = makeSegmentedSingleValueEditor(
+      effectiveField.options || ANIMATION_TYPE_OPTIONS,
+      values[0] || '',
+      (nextValue) => {
+        const normalized = String(nextValue || '').trim();
+        setSingleFieldValue(section, effectiveField.key, normalized);
+        if (onValueChange) onValueChange(effectiveField.key, normalized);
+      },
+      effectiveField.key,
+      {
+        includeEmpty: !effectiveField.required,
+        showTokenIcon: false,
+        getLabel: formatAnimationTypeLabel
+      }
+    );
+    controlWrap.appendChild(chips);
+    row.appendChild(controlWrap);
+    return row;
+  }
+
   if (state.activeTab === 'animations' && effectiveField.key === 'frame_time_seconds') {
     const parsed = Number.parseFloat(String(values[0] || '').trim());
     const min = 0.02;
@@ -66461,14 +68275,25 @@ function renderKnownField(section, schemaField, fieldDocs, onValueChange) {
       valueLabel.textContent = `${seconds.toFixed(2)}s (${ms}ms)`;
     };
     syncValueLabel(sliderValue);
+    wireGroupedUndoSession(slider, {
+      key: buildSectionFieldEditSessionKey(section, effectiveField.key),
+      undoKey: getSectionItemUndoKey(section),
+      getValue: () => String(slider.value || ''),
+      commitOnChange: true
+    });
 
     slider.addEventListener('input', () => {
       const next = Number.parseFloat(slider.value);
       const seconds = Number.isFinite(next) ? next : fallback;
+      syncValueLabel(seconds);
+    });
+
+    slider.addEventListener('change', () => {
+      const next = Number.parseFloat(slider.value);
+      const seconds = Number.isFinite(next) ? next : fallback;
       const serialized = seconds.toFixed(2).replace(/\.00$/, '');
       syncValueLabel(seconds);
-      setSingleFieldValue(section, effectiveField.key, serialized);
-      if (onValueChange) onValueChange(effectiveField.key, serialized);
+      setSingleFieldValue(section, effectiveField.key, serialized, { captureUndo: false });
     });
 
     wrap.appendChild(label);
@@ -66532,12 +68357,88 @@ function createSectionFromTemplate(tabKey) {
   return section;
 }
 
+function getSectionFieldValueCaseInsensitive(section, key) {
+  const needle = String(key || '').trim().toLowerCase();
+  const fields = Array.isArray(section && section.fields) ? section.fields : [];
+  const field = fields.find((item) => String(item && item.key || '').trim().toLowerCase() === needle);
+  return field ? String(field.value || '').trim() : '';
+}
+
+function makeUniqueSectionName(tab, baseName, selectedIndex = -1, fallbackName = 'District') {
+  const cleanBase = String(baseName || '').trim() || String(fallbackName || '').trim() || 'District';
+  const sections = Array.isArray(tab && tab.model && tab.model.sections) ? tab.model.sections : [];
+  const used = new Set();
+  sections.forEach((section, index) => {
+    if (index === selectedIndex) return;
+    const name = getSectionFieldValueCaseInsensitive(section, 'name');
+    if (name) used.add(normalizeConfigToken(name).toLowerCase());
+  });
+  if (!used.has(cleanBase.toLowerCase())) return cleanBase;
+  for (let n = 2; n < 10000; n += 1) {
+    const candidate = `${cleanBase} ${n}`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${cleanBase} ${Date.now()}`;
+}
+
+function cloneSectionForCreate(tab, sourceSection, mode, tabKey, options = {}) {
+  const schema = SECTION_SCHEMAS[tabKey] || SECTION_SCHEMAS.districts || {};
+  const source = sourceSection ? deepCloneUiValue(sourceSection) : createSectionFromTemplate(tabKey);
+  const section = {
+    marker: source.marker || schema.marker || '#District',
+    fields: Array.isArray(source.fields) ? source.fields.map((field) => deepCloneUiValue(field)) : [],
+    comments: Array.isArray(source.comments) ? source.comments.slice() : []
+  };
+  const fallbackName = String(schema.entityName || 'District').trim();
+  const originalName = String(options.name || getSectionFieldValueCaseInsensitive(section, 'name') || fallbackName).trim();
+  const newName = makeUniqueSectionName(tab, mode === 'copy' ? `${originalName} Copy` : originalName, -1, fallbackName);
+  const hadDisplayName = section.fields.some((field) => String(field && field.key || '').trim().toLowerCase() === 'display_name');
+  section.fields = section.fields.filter((field) => {
+    const key = String(field && field.key || '').trim().toLowerCase();
+    return key !== 'name' && key !== 'display_name';
+  });
+  section.fields.unshift({ key: 'name', value: newName });
+  if (hadDisplayName) section.fields.splice(1, 0, { key: 'display_name', value: newName });
+  if (options.importSourcePath) {
+    section._pendingSectionImport = {
+      tabKey: String(tabKey || '').trim(),
+      sourceBiqPath: String(options.importSourcePath || ''),
+      sourceScenarioPaths: Array.isArray(options.importScenarioPaths) ? options.importScenarioPaths.slice() : []
+    };
+  }
+  return section;
+}
+
+function cloneDistrictSectionForCreate(tab, sourceSection, mode, options = {}) {
+  return cloneSectionForCreate(tab, sourceSection, mode, 'districts', options);
+}
+
 function addSection(tab, tabKey) {
   rememberUndoSnapshotForKey(`SECTION_TAB:${String(tabKey || '').trim()}`);
   tab.model.sections.unshift(createSectionFromTemplate(tabKey));
   state.sectionSelection[tabKey] = 0;
   setDirty(true);
   renderActiveTab();
+}
+
+function copySelectedSection(tab, tabKey) {
+  if (!tab || !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0) return;
+  const selectedIndex = Math.max(0, Math.min(state.sectionSelection[tabKey] || 0, tab.model.sections.length - 1));
+  const selected = tab.model.sections[selectedIndex];
+  if (!selected) return;
+  rememberUndoSnapshotForKey(`SECTION_TAB:${String(tabKey || '').trim()}`);
+  const section = cloneSectionForCreate(tab, selected, 'copy', tabKey);
+  tab.model.sections.unshift(section);
+  state.sectionSelection[tabKey] = 0;
+  state.sectionDetailScrollTop[tabKey] = 0;
+  setDirty(true);
+  const schema = SECTION_SCHEMAS[tabKey] || {};
+  setStatus(`Copied "${getSectionFieldValueCaseInsensitive(selected, 'name') || String(schema.entityName || 'entry').toLowerCase()}".`);
+  renderActiveTab();
+}
+
+function copySelectedDistrictSection(tab) {
+  copySelectedSection(tab, 'districts');
 }
 
 function deleteSelectedSection(tab, tabKey) {
@@ -67987,17 +69888,22 @@ function renderMusicTab(tab) {
 
 function renderSectionTab(tab, tabKey) {
   const schema = SECTION_SCHEMAS[tabKey];
-  const useInlineFilterActions = tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders';
+  const useInlineFilterActions = tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders' || tabKey === 'animations';
   const showQualityWarnings = shouldRunQualityChecks();
   const districtCompatibility = (showQualityWarnings && tabKey === 'districts') ? collectDistrictCompatibilityIssuesForTab(tab) : null;
   const districtIssueIndexes = (showQualityWarnings && tabKey === 'districts') ? collectDistrictIssueIndexes(tab, districtCompatibility) : null;
   const wonderCompatibility = (showQualityWarnings && tabKey === 'wonders') ? collectWonderCompatibilityIssuesForTab(tab) : null;
   const wonderIssueIndexes = (showQualityWarnings && tabKey === 'wonders') ? collectWonderIssueIndexes(tab, wonderCompatibility) : null;
-  const auditGeneralMessages = showQualityWarnings ? getLoadAuditAllMessages(tabKey) : [];
+  const auditGeneralMessages = showQualityWarnings
+    ? (tabKey === 'animations' ? getLoadAuditGeneralEntries(tabKey) : getLoadAuditAllEntries(tabKey))
+    : [];
   const wrap = document.createElement('div');
   wrap.className = 'section-editor';
 
-  const auditGeneralBox = showQualityWarnings ? createWarningBox(auditGeneralMessages, 'Quality Checks', { collapsible: true }) : null;
+  const auditGeneralBox = showQualityWarnings ? createWarningBox(auditGeneralMessages, 'Quality Checks', {
+    collapsible: true,
+    onAction: handleLoadAuditAction
+  }) : null;
   if (auditGeneralBox) wrap.appendChild(auditGeneralBox);
 
   if (tabKey === 'districts') {
@@ -68074,12 +69980,88 @@ function renderSectionTab(tab, tabKey) {
   if (useInlineFilterActions) {
     const actionRow = document.createElement('div');
     actionRow.className = 'reference-entity-actions';
+    if (tabKey === 'animations') {
+      const workshopBtn = document.createElement('button');
+      workshopBtn.type = 'button';
+      workshopBtn.className = 'ghost tile-animation-flic-workshop-btn';
+      workshopBtn.innerHTML = '<span class="btn-icon">🎞</span>FLC Workshop';
+      workshopBtn.title = 'Open the selected tile animation FLC in the Workshop';
+      workshopBtn.disabled = !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0;
+      workshopBtn.addEventListener('click', () => {
+        const sections = tab.model && Array.isArray(tab.model.sections) ? tab.model.sections : [];
+        const selectedIndex = Math.max(0, Math.min(state.sectionSelection[tabKey] || 0, Math.max(0, sections.length - 1)));
+        const section = sections[selectedIndex];
+        if (!section) {
+          setStatus('Select a tile animation before opening the FLC Workshop.', true);
+          return;
+        }
+        void openFlicWorkshopForTileAnimationSection(section);
+      });
+      actionRow.appendChild(workshopBtn);
+    }
+    if (tabKey === 'districts' || tabKey === 'naturalWonders') {
+      const workshopBtn = document.createElement('button');
+      workshopBtn.type = 'button';
+      workshopBtn.className = 'ghost section-animation-flic-workshop-btn';
+      workshopBtn.innerHTML = '<span class="btn-icon">🎞</span>FLC Workshop';
+      workshopBtn.title = `Open the selected ${schema.entityName.toLowerCase()} animation FLC in the Workshop`;
+      workshopBtn.disabled = !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0;
+      workshopBtn.addEventListener('click', () => {
+        const sections = tab.model && Array.isArray(tab.model.sections) ? tab.model.sections : [];
+        const selectedIndex = Math.max(0, Math.min(state.sectionSelection[tabKey] || 0, Math.max(0, sections.length - 1)));
+        const section = sections[selectedIndex];
+        if (!section) {
+          setStatus(`Select a ${schema.entityName.toLowerCase()} before opening the FLC Workshop.`, true);
+          return;
+        }
+        void openFlicWorkshopForSectionAnimation(section, tabKey);
+      });
+      actionRow.appendChild(workshopBtn);
+    }
+
     const addSectionBtn = document.createElement('button');
     addSectionBtn.type = 'button';
     addSectionBtn.className = 'ghost action-add';
     addSectionBtn.textContent = '+ Add';
     addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
     actionRow.appendChild(addSectionBtn);
+
+    if (tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders') {
+      const copySectionBtn = document.createElement('button');
+      copySectionBtn.type = 'button';
+      copySectionBtn.className = 'ghost action-copy';
+      copySectionBtn.textContent = '⧉ Copy';
+      copySectionBtn.disabled = !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0;
+      copySectionBtn.addEventListener('click', () => copySelectedSection(tab, tabKey));
+      actionRow.appendChild(copySectionBtn);
+
+      const importSectionBtn = document.createElement('button');
+      importSectionBtn.type = 'button';
+      importSectionBtn.className = 'ghost action-import';
+      importSectionBtn.textContent = '⇪ Import';
+      importSectionBtn.addEventListener('click', async () => {
+        const importConfig = SECTION_IMPORT_CONFIGS[tabKey] || SECTION_IMPORT_CONFIGS.districts;
+        try {
+          const result = await promptSectionImportAction(tab, tabKey);
+          if (!result || !result.importedSection) return;
+          rememberUndoSnapshotForKey(`SECTION_TAB:${String(tabKey || '').trim()}`);
+          const section = cloneSectionForCreate(tab, result.importedSection, 'import', tabKey, {
+            name: result.name,
+            importSourcePath: result.importFilePath,
+            importScenarioPaths: result.importScenarioPaths
+          });
+          tab.model.sections.unshift(section);
+          state.sectionSelection[tabKey] = 0;
+          state.sectionDetailScrollTop[tabKey] = 0;
+          setDirty(true);
+          setStatus(`Imported "${getSectionFieldValueCaseInsensitive(result.importedSection, 'name') || importConfig.statusName}".`);
+          renderActiveTab();
+        } catch (err) {
+          setStatus(err && err.message ? err.message : `${importConfig.fallbackName} import failed.`, true);
+        }
+      });
+      actionRow.appendChild(importSectionBtn);
+    }
 
     const deleteSectionBtn = document.createElement('button');
     deleteSectionBtn.type = 'button';
@@ -68123,6 +70105,7 @@ function renderSectionTab(tab, tabKey) {
     if (tabKey === 'districts') return () => loadDistrictRepresentativePreview(section, thumb, 35);
     if (tabKey === 'wonders') return () => loadWonderCompletedThumbnail(section, thumb, 44);
     if (tabKey === 'naturalWonders') return () => loadNaturalWonderThumbnail(section, thumb, 44);
+    if (tabKey === 'animations') return () => loadAnimationThumbnail(section, thumb, 44);
     return () => Promise.resolve(false);
   };
 
@@ -68182,6 +70165,7 @@ function renderSectionTab(tab, tabKey) {
         renderSectionBody({
           skipListRebuild: true,
           resetDetailScroll: !!options.resetDetailScroll,
+          preserveListScroll: !!options.preserveListScroll,
           fromScheduledSelectionRender: true
         });
       }, 0);
@@ -68282,7 +70266,8 @@ function renderSectionTab(tab, tabKey) {
     const after = captureViewSnapshot();
     updateSectionListActiveState(sectionIndex);
     scheduleSectionSelectionDetailRender({
-      resetDetailScroll: !!options.resetDetailScroll
+      resetDetailScroll: !!options.resetDetailScroll,
+      preserveListScroll: !!options.preserveListScroll
     });
     if (!state.isApplyingHistory && before && after && snapshotKey(before) !== snapshotKey(after)) {
       pushNavigationSnapshot(after);
@@ -68299,6 +70284,7 @@ function renderSectionTab(tab, tabKey) {
   }
   const skipListRebuild = options.skipListRebuild === true;
   const resetDetailScroll = options.resetDetailScroll === true;
+  const preserveListScroll = options.preserveListScroll === true;
 
   const selectedIndex = Math.max(0, Math.min(state.sectionSelection[tabKey] || 0, Math.max(0, tab.model.sections.length - 1)));
   state.sectionSelection[tabKey] = selectedIndex;
@@ -68351,9 +70337,9 @@ function renderSectionTab(tab, tabKey) {
   pendingSectionThumbs = [];
   const addSectionListButton = ({ section, sectionIndex, sectionTitle, districtDisplay }) => {
     const itemBtn = document.createElement('button');
-    const showSectionThumb = tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders';
+    const showSectionThumb = tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders' || tabKey === 'animations';
     itemBtn.className = showSectionThumb ? 'entry-list-item district-entry-item' : 'entry-list-item no-thumb';
-    if (tabKey === 'wonders' || tabKey === 'naturalWonders') {
+    if (tabKey === 'wonders' || tabKey === 'naturalWonders' || tabKey === 'animations') {
       itemBtn.classList.add('section-entry-item-large-thumb');
     }
     itemBtn.dataset.index = String(sectionIndex);
@@ -68386,7 +70372,7 @@ function renderSectionTab(tab, tabKey) {
         issueBadge.title = 'This district has validation warnings.';
         itemBtn.appendChild(issueBadge);
       }
-    } else if (tabKey === 'wonders' || tabKey === 'naturalWonders') {
+    } else if (tabKey === 'wonders' || tabKey === 'naturalWonders' || tabKey === 'animations') {
       const hasSectionIssue = sectionHasIssue(sectionIndex);
       if (hasSectionIssue) itemBtn.classList.add('entry-item-has-issue');
       const thumb = document.createElement('span');
@@ -68395,7 +70381,8 @@ function renderSectionTab(tab, tabKey) {
       if (sectionIndex === selectedIndex) {
         thumb.dataset.thumbPending = '0';
         if (tabKey === 'wonders') loadWonderCompletedThumbnail(section, thumb, 44);
-        else loadNaturalWonderThumbnail(section, thumb, 44);
+        else if (tabKey === 'naturalWonders') loadNaturalWonderThumbnail(section, thumb, 44);
+        else loadAnimationThumbnail(section, thumb, 44);
       } else {
         thumb.dataset.thumbPending = '1';
         pendingSectionThumbs.push({
@@ -68421,14 +70408,14 @@ function renderSectionTab(tab, tabKey) {
       state.tabContentScrollTop = el.tabContent.scrollTop;
     });
     itemBtn.addEventListener('click', () => {
-      selectSection(sectionIndex);
+      selectSection(sectionIndex, { preserveListScroll: true });
     });
     if (!skipListRebuild) listPane.appendChild(itemBtn);
   };
   if (!skipListRebuild) {
     listPane.innerHTML = '';
     sectionEntries.forEach((entry) => addSectionListButton(entry));
-    scheduleHydrateVisibleSectionThumbs(28);
+    scheduleHydrateVisibleSectionThumbs(tabKey === 'animations' ? 8 : 28);
   } else {
     rebuildPendingSectionThumbQueue(sectionEntries);
     Array.from(listPane.querySelectorAll('.entry-list-item')).forEach((itemBtn) => {
@@ -68446,9 +70433,11 @@ function renderSectionTab(tab, tabKey) {
         loadWonderCompletedThumbnail(match.section, thumb, 44);
       } else if (tabKey === 'naturalWonders') {
         loadNaturalWonderThumbnail(match.section, thumb, 44);
+      } else if (tabKey === 'animations') {
+        loadAnimationThumbnail(match.section, thumb, 44);
       }
     });
-    scheduleHydrateVisibleSectionThumbs(20);
+    scheduleHydrateVisibleSectionThumbs(tabKey === 'animations' ? 8 : 20);
   }
 
   const savedDetailTop = state.sectionDetailScrollTop[tabKey] || 0;
@@ -68487,14 +70476,13 @@ function renderSectionTab(tab, tabKey) {
     if (tabKey === 'districts') {
       topHint = document.createElement('span');
       topHint.className = 'hint';
-      topHint.textContent = districtDisplay.secondary || districtDisplay.tooltip || '';
+      topHint.textContent = districtDisplay.secondary || '';
       if (topHint.textContent) top.appendChild(topHint);
       attachRichTooltip(
         top,
         `${formatSourceInfo(getSectionTabSourceMeta(tab), 'C3X Config')}\nDisplay Name: ${districtDisplay.primary}\nInternal Name: ${districtDisplay.secondary || '(same as display)'}\nTooltip: ${districtDisplay.tooltip || '(not set)'}`
       );
     }
-
     card.appendChild(top);
     if (showQualityWarnings && tabKey === 'districts') {
       const warningLines = [];
@@ -68535,6 +70523,11 @@ function renderSectionTab(tab, tabKey) {
     } else if (showQualityWarnings && tabKey === 'naturalWonders') {
       const warningBox = createWarningBox(getLoadAuditSectionMessages('naturalWonders', selectedIndex));
       if (warningBox) card.appendChild(warningBox);
+    } else if (showQualityWarnings && tabKey === 'animations') {
+      const warningBox = createWarningBox(getLoadAuditSectionEntries('animations', selectedIndex), 'Warning', {
+        onAction: handleLoadAuditAction
+      });
+      if (warningBox) card.appendChild(warningBox);
     }
 
     const refreshPreviews = (() => {
@@ -68545,9 +70538,10 @@ function renderSectionTab(tab, tabKey) {
       let previewRefreshGeneration = 0;
       if (tabKey === 'districts') {
         const refreshDistrict = () => {
-          previewRefreshGeneration += 1;
+          const generation = ++previewRefreshGeneration;
           previewWrap.innerHTML = '';
           renderDistrictRepresentativePreviewCard(section, previewWrap, `${districtDisplay.primary} Art`);
+          renderSectionAnimationPreviewCard(section, previewWrap, tabKey, () => generation === previewRefreshGeneration);
         };
         refreshDistrict();
         return refreshDistrict;
@@ -68569,10 +70563,10 @@ function renderSectionTab(tab, tabKey) {
     })();
 
     const previewFieldKeysByTab = {
-      districts: new Set(['img_paths', 'custom_width', 'custom_height', 'vary_img_by_era', 'vary_img_by_culture', 'dependent_improvs', 'render_strategy']),
+      districts: new Set(['img_paths', 'custom_width', 'custom_height', 'vary_img_by_era', 'vary_img_by_culture', 'dependent_improvs', 'render_strategy', 'animation']),
       wonders: new Set(['img_path', 'img_row', 'img_column', 'img_construct_row', 'img_construct_column', 'enable_img_alt_dir', 'img_alt_dir_construct_row', 'img_alt_dir_construct_column', 'img_alt_dir_row', 'img_alt_dir_column', 'custom_width', 'custom_height']),
       naturalWonders: new Set(['img_path', 'img_row', 'img_column', 'animation', 'custom_width', 'custom_height']),
-      animations: new Set(['ini_path', 'frame_time_seconds'])
+      animations: new Set(['ini_path', 'frame_time_seconds', 'direction'])
     };
     const previewFields = previewFieldKeysByTab[tabKey] || new Set();
 
@@ -68670,7 +70664,6 @@ function renderSectionTab(tab, tabKey) {
           return;
         }
         if (tabKey === 'naturalWonders' && key === 'adjacency_dir') {
-          syncNaturalWonderAnimationDirections(section, { captureUndo: false });
           refreshPreviews();
           renderActiveTab({ preserveTabScroll: true });
           return;
@@ -68702,8 +70695,9 @@ function renderSectionTab(tab, tabKey) {
       updateScrollTopFab();
       updateStickySearchRowShadow();
     }
-    if (!skipListRebuild) listPane.scrollTop = savedListTop;
+    if (!skipListRebuild || preserveListScroll) listPane.scrollTop = savedListTop;
     detailPane.scrollTop = resetDetailScroll ? 0 : savedDetailTop;
+    if (skipListRebuild && preserveListScroll) return;
     window.requestAnimationFrame(() => {
       if (!listPane.isConnected) return;
       const activeBtn = listPane.querySelector('.entry-list-item.active');
@@ -68854,6 +70848,45 @@ function runInitialBundleAuditAfterLoad(payload) {
 async function handleLoadAuditAction(action) {
   if (!action || typeof action !== 'object') return;
   const actionType = String(action.type || '');
+  if (actionType === 'repair-tile-animation-ini') {
+    const tabKey = 'animations';
+    const sectionIndex = Number(action.sectionIndex);
+    const sections = state.bundle
+      && state.bundle.tabs
+      && state.bundle.tabs.animations
+      && state.bundle.tabs.animations.model
+      && Array.isArray(state.bundle.tabs.animations.model.sections)
+      ? state.bundle.tabs.animations.model.sections
+      : [];
+    const section = Number.isInteger(sectionIndex) && sectionIndex >= 0 ? sections[sectionIndex] : null;
+    if (!section) {
+      setStatus('Could not stage the Tile Animation INI repair; the animation entry was not found.', true);
+      return;
+    }
+    const iniPath = String(action.iniPath || getFieldValue(section, 'ini_path') || '').trim();
+    const flcFileName = String(action.flcFileName || '').trim();
+    if (!iniPath || !/\.flc$/i.test(flcFileName) || /[\\/]/.test(flcFileName)) {
+      setStatus('Could not stage the Tile Animation INI repair; the warning was missing valid INI/FLC details.', true);
+      return;
+    }
+    rememberUndoSnapshotForKey(getSectionItemUndoKey(section));
+    section.pendingTileAnimationIniRepair = {
+      iniPath,
+      sourcePath: String(action.sourcePath || '').trim(),
+      flcFileName
+    };
+    dismissLoadAuditSectionEntry(tabKey, sectionIndex, (auditEntry) => (
+      String(auditEntry && auditEntry.code || '') === 'tile-animation-ini-invalid'
+      && String(auditEntry && auditEntry.action && auditEntry.action.iniPath || '').trim().toLowerCase() === iniPath.toLowerCase()
+    ));
+    state.sectionSelection[tabKey] = sectionIndex;
+    state.activeTab = tabKey;
+    setDirty(true);
+    renderTabs();
+    renderActiveTab({ preserveTabScroll: true });
+    setStatus(`Staged canonical Tile Animation INI for "${iniPath}". Use Save to write it with the normal save workflow.`);
+    return;
+  }
   if (actionType !== 'copy-scenario-pediaicons-block' && actionType !== 'shorten-reference-art-path') return;
   const civilopediaKey = String(action.civilopediaKey || '').trim();
   const targetKey = civilopediaKey.toUpperCase();
@@ -68967,7 +71000,6 @@ function renderActiveTab(options = {}) {
   }
   state.isRendering = true;
   hideRichTooltip();
-  el.tabContent.innerHTML = '';
   if (state.activeTab === 'players' && state.bundle.tabs.scenarioSettings) {
     state.activeTab = 'scenarioSettings';
   }
@@ -68989,21 +71021,30 @@ function renderActiveTab(options = {}) {
     closeCivColorPaletteModal();
   }
 
-  if (tab.type === 'reference') {
-    el.tabContent.appendChild(renderReferenceTab(tab, state.activeTab));
-  } else if (tab.type === 'map') {
-    el.tabContent.appendChild(renderMapTab(tab));
-  } else if (tab.type === 'biqStructure') {
-    el.tabContent.appendChild(renderBiqTab(tab));
-  } else if (tab.type === 'biq') {
-    el.tabContent.appendChild(renderBiqTab(tab));
-  } else if (state.activeTab === 'base') {
-    el.tabContent.appendChild(renderBaseTab(tab));
-  } else if (state.activeTab === 'music' || tab.type === 'music') {
-    el.tabContent.appendChild(renderMusicTab(tab));
-  } else {
-    el.tabContent.appendChild(renderSectionTab(tab, state.activeTab));
+  let renderedTab = null;
+  try {
+    if (tab.type === 'reference') {
+      renderedTab = renderReferenceTab(tab, state.activeTab);
+    } else if (tab.type === 'map') {
+      renderedTab = renderMapTab(tab);
+    } else if (tab.type === 'biqStructure') {
+      renderedTab = renderBiqTab(tab);
+    } else if (tab.type === 'biq') {
+      renderedTab = renderBiqTab(tab);
+    } else if (state.activeTab === 'base') {
+      renderedTab = renderBaseTab(tab);
+    } else if (state.activeTab === 'music' || tab.type === 'music') {
+      renderedTab = renderMusicTab(tab);
+    } else {
+      renderedTab = renderSectionTab(tab, state.activeTab);
+    }
+  } catch (err) {
+    state.isRendering = false;
+    console.error('[renderer] Failed to render active tab', err);
+    setStatus(`Could not render ${String(tab.title || state.activeTab || 'tab')}: ${err && err.message ? err.message : 'unknown error'}`, true);
+    return;
   }
+  el.tabContent.replaceChildren(renderedTab);
   state.isRendering = false;
   updateSaveButtonLabel();
   window.requestAnimationFrame(() => {
@@ -69784,9 +71825,11 @@ function mapSaveKindLabel(kind) {
   if (!key) return 'File';
   if (key === 'base') return 'Base Config';
   if (key === 'districts') return 'Districts';
+  if (key === 'districtart') return 'District Art';
   if (key === 'wonders') return 'Wonder Districts';
   if (key === 'naturalwonders') return 'Natural Wonders';
   if (key === 'animations') return 'Tile Animations';
+  if (key === 'tileanimationini') return 'Tile Animation INI';
   if (key === 'music') return 'Music';
   if (key === 'musicaudio') return 'Music MP3';
   if (key === 'biq') return 'BIQ';
@@ -71569,7 +73612,7 @@ async function restoreEditableSnapshot(targetSnapshot, options = {}) {
 }
 
 function applySerializedReferenceEntrySnapshotToTabs(mergedTabs, snapshot) {
-  const tabKey = String(snapshot && snapshot.tabKey || '').trim().toLowerCase();
+  const tabKey = normalizeEditableTabKey(snapshot && snapshot.tabKey);
   const identity = String(snapshot && snapshot.identity || '').trim();
   const currentTab = mergedTabs && mergedTabs[tabKey];
   const currentEntries = currentTab && Array.isArray(currentTab.entries) ? currentTab.entries : null;
@@ -71777,9 +73820,9 @@ function applyEditableSnapshotToCurrentBundle(targetSnapshot, options = {}) {
   refreshActiveReferenceListDirtyBadges();
   refreshActiveBiqRecordListDirtyBadges();
   const restoredReferenceTabKey = isSerializedReferenceEntrySnapshot
-    ? String(activeSerializedReferenceSnapshot && activeSerializedReferenceSnapshot.tabKey || '').trim().toLowerCase()
+    ? normalizeEditableTabKey(targetSnapshot && targetSnapshot.tabKey)
     : isTechTreeNodeDragSnapshot
-    ? String(activeSerializedReferenceSnapshot && activeSerializedReferenceSnapshot.tabKey || '').trim().toLowerCase()
+    ? normalizeEditableTabKey(activeSerializedReferenceSnapshot && activeSerializedReferenceSnapshot.tabKey)
     : '';
   const shouldDeferActiveTabRenderToTechTreeModal = (
     (isSerializedReferenceEntrySnapshot || isTechTreeNodeDragSnapshot)
