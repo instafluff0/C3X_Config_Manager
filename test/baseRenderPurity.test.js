@@ -65,13 +65,13 @@ test('R28 unit counter and visibility base fields use structured renderers', () 
 
   assert.match(
     text,
-    /function parseUnitCounterGroupItems\(value\)/,
-    'unit_groups should have a quote-aware structured parser'
+    /function parseUnitTypeTagItems\(value\)/,
+    'unit_type_tags should have a quote-aware structured parser'
   );
   assert.match(
     text,
-    /if \(row\.key === 'unit_groups'\)/,
-    'unit_groups should render with a dedicated structured editor'
+    /if \(row\.key === 'unit_type_tags'\)/,
+    'unit_type_tags should render with a dedicated structured editor'
   );
   assert.match(
     text,
@@ -170,22 +170,22 @@ test('R28 unit counter and visibility base fields use structured renderers', () 
   );
   assert.match(
     text,
-    /remountBaseInputByKey\('counter_rules'\)/,
-    'counter_rules should refresh when unit_groups changes so group labels are immediately available'
+    /if \(String\(row && row\.key \|\| ''\)\.trim\(\) === 'unit_type_tags'\) \{[\s\S]*?'counter_rules'[\s\S]*?remountBaseInputByKey\(dependentKey\)/,
+    'counter_rules should refresh when unit_type_tags changes so tag labels are immediately available'
   );
   assert.match(
     text,
-    /searchPlaceholder: 'Friendly unit or group\.\.\.',[\s\S]*?noneLabel: 'Any \(\*\)',[\s\S]*?includeNone: false/,
+    /searchPlaceholder: 'Friendly unit or tag\.\.\.',[\s\S]*?noneLabel: 'Any \(\*\)',[\s\S]*?includeNone: false/,
     'counter_rules attacker picker should not render both the none row and wildcard Any row'
   );
   assert.match(
     text,
-    /createDefaultItem: \(\) => \(\{ attacker: '\*', defender: '\*'[\s\S]*?searchPlaceholder: 'Enemy unit or group\.\.\.',[\s\S]*?noneLabel: 'Any \(\*\)',[\s\S]*?includeNone: false/,
+    /createDefaultItem: \(\) => \(\{ attacker: '\*', defender: '\*'[\s\S]*?searchPlaceholder: 'Enemy unit or tag\.\.\.',[\s\S]*?noneLabel: 'Any \(\*\)',[\s\S]*?includeNone: false/,
     'counter_rules defender picker should default to the wildcard Any row'
   );
   assert.match(
     text,
-    /makeSectionTitle\('Match'\)[\s\S]*?makeLabeledControl\('Friendly unit\/group', attacker\)[\s\S]*?makeLabeledControl\('Enemy unit\/group', defender\)/,
+    /makeSectionTitle\('Match'\)[\s\S]*?makeLabeledControl\('Friendly unit\/tag', attacker\)[\s\S]*?makeLabeledControl\('Enemy unit\/tag', defender\)/,
     'counter_rules should render the unit match as a friendly-vs-enemy pair'
   );
   assert.match(
@@ -646,10 +646,10 @@ test('C3X bitfield base settings serialize with whitespace-separated bracket lis
     'C3X multi-choice bitfield controls must not write comma-delimited lists'
   );
 
-  assert.match(
+  assert.doesNotMatch(
     text,
     /show_tile_destruct_animation_after:\s*\['bombard', 'bomb', 'pillage'\]/,
-    'show_tile_destruct_animation_after should use the same structured bitfield editor as other C3X token lists'
+    'show_tile_destruct_animation_after should stay quarantined out of active R28 bitfield controls'
   );
 });
 
@@ -1197,32 +1197,32 @@ test('BIQ reference tab count text uses filtered counts and countable unit rows'
   );
 });
 
-test('unit_limit_groups uses a structured unit picker editor and feeds unit_limits options', () => {
+test('unit_type_tags uses a structured unit picker editor and feeds unit consumers', () => {
   const rendererPath = path.join(__dirname, '..', 'src', 'renderer.js');
   const text = fs.readFileSync(rendererPath, 'utf8');
 
   assert.match(
     text,
-    /function parseUnitLimitGroupItems\(value\) \{[\s\S]*?parseDelimitedStructuredEntries\(value\)[\s\S]*?parseBracketedOptionTokens\(item\.slice\(i \+ 1\)\)/,
-    'Renderer should parse unit_limit_groups as group label plus whitespace-separated unit members'
+    /function parseUnitTypeTagItems\(value\) \{[\s\S]*?parseDelimitedStructuredEntries\(value\)[\s\S]*?parseBracketedOptionTokens\(item\.slice\(i \+ 1\)\)/,
+    'Renderer should parse unit_type_tags as tag label plus whitespace-separated unit members'
   );
 
   assert.match(
     text,
-    /if \(row\.key === 'unit_limit_groups'\) \{[\s\S]*?makeNamedListTokenEditor\(\{[\s\S]*?tabKey: 'units'[\s\S]*?serializeUnitLimitGroupItems\(api\.items\)/,
-    'unit_limit_groups should render as group cards with unit member pickers'
+    /if \(row\.key === 'unit_type_tags'\) \{[\s\S]*?makeNamedListTokenEditor\(\{[\s\S]*?tabKey: 'units'[\s\S]*?serializeUnitTypeTagItems\(api\.items\)/,
+    'unit_type_tags should render as tag cards with unit member pickers'
   );
 
   assert.match(
     text,
-    /const groupOpts = getUnitLimitGroupOptions\(\);[\s\S]*?label: 'Unit Limit Groups'[\s\S]*?searchPlaceholder: 'Search Unit or Group\.\.\.'/,
-    'unit_limits should offer unit limit group labels alongside unit names'
+    /const tagOpts = getUnitTypeTagOptions\(\);[\s\S]*?label: 'Unit Type Tags'[\s\S]*?searchPlaceholder: 'Search Unit or Tag\.\.\.'/,
+    'unit_limits should offer unit type tag labels alongside unit names'
   );
 
   assert.match(
     text,
-    /if \(String\(row && row\.key \|\| ''\)\.trim\(\) === 'unit_limit_groups'\) \{[\s\S]*?remountBaseInputByKey\('unit_limits'\);[\s\S]*?\}/,
-    'unit_limits picker options should refresh after unsaved unit_limit_groups edits'
+    /if \(String\(row && row\.key \|\| ''\)\.trim\(\) === 'unit_type_tags'\) \{[\s\S]*?'unit_limits'[\s\S]*?'counter_rules'[\s\S]*?remountBaseInputByKey\(dependentKey\)/,
+    'unit consumers should refresh after unsaved unit_type_tags edits'
   );
 });
 

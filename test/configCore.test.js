@@ -119,9 +119,13 @@ test('buildBaseModel includes R28 UI defaults missing from installed default con
   assert.equal(byKey.get('radar_tower_detection_distance').value, '0');
   assert.equal(byKey.get('outpost_detection_distance').value, '0');
   assert.equal(byKey.get('steal_plans_duration').value, '1');
-  assert.equal(byKey.get('unit_limit_groups').value, '[]');
+  assert.equal(byKey.get('diplo_demand_rate_between_ai_players').value, '0');
+  assert.equal(byKey.get('limit_ai_to_one_demand_per_turn').value, 'false');
+  assert.equal(byKey.get('show_ai_demand_info_popup').value, 'false');
+  assert.equal(byKey.get('remove_human_player_bias_from_ai_war_planning').value, 'false');
+  assert.equal(byKey.get('unit_type_tags').value, '[]');
+  assert.equal(byKey.get('pollution_spawn_effect').value, 'standard');
   assert.equal(byKey.get('enable_unit_counters').value, 'false');
-  assert.equal(byKey.get('unit_groups').value, '[]');
   assert.equal(byKey.get('counter_rules').value, '[]');
   assert.equal(byKey.get('base_visibility_range').value, '1');
   assert.equal(byKey.get('unit_visibility_rules').value, '[Sea: 2 when-fortified-same-continent]');
@@ -196,6 +200,121 @@ test('prepareImportedDistrictArtWrites gives imported PCX a unique name before o
   assert.equal(fs.readFileSync(path.join(targetArt, 'Depot.pcx')).toString('hex'), '090807');
 });
 
+test('prepareImportedDistrictArtWrites localizes imported wonder district img_path', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  fs.writeFileSync(path.join(sourceArt, 'WonderDistrict.pcx'), Buffer.from([0xaa, 0xbb, 0xcc]));
+  fs.writeFileSync(path.join(targetArt, 'WonderDistrict.pcx'), Buffer.from([0x01, 0x02, 0x03]));
+  const imported = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Great Library' },
+      { key: 'img_path', value: 'WonderDistrict.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'wonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { wonders: { model: { sections: [imported] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 1);
+  assert.equal(path.basename(result.writes[0].path), 'WonderDistrict_2.pcx');
+  assert.equal(imported.fields.find((field) => field.key === 'img_path').value, 'WonderDistrict_2.pcx');
+});
+
+test('prepareImportedDistrictArtWrites reuses existing natural wonder target PCX when source bytes match', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  const data = Buffer.from([0x10, 0x20, 0x30]);
+  fs.writeFileSync(path.join(sourceArt, 'Falls.pcx'), data);
+  fs.writeFileSync(path.join(targetArt, 'Falls.pcx'), data);
+  const imported = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Falls' },
+      { key: 'img_path', value: 'Falls.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'naturalWonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { naturalWonders: { model: { sections: [imported] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 0);
+  assert.equal(imported.fields.find((field) => field.key === 'img_path').value, 'Falls.pcx');
+});
+
+test('prepareImportedDistrictArtWrites reuses one renamed copy for repeated imports of the same source PCX', () => {
+  const tmp = mkTmpDir();
+  const sourceRoot = path.join(tmp, 'source');
+  const targetRoot = path.join(tmp, 'target');
+  const sourceArt = path.join(sourceRoot, 'Art', 'Districts', '1200');
+  const targetArt = path.join(targetRoot, 'Art', 'Districts', '1200');
+  fs.mkdirSync(sourceArt, { recursive: true });
+  fs.mkdirSync(targetArt, { recursive: true });
+  const sourceData = Buffer.from([0x40, 0x50, 0x60]);
+  fs.writeFileSync(path.join(sourceArt, 'NaturalWonders.pcx'), sourceData);
+  fs.writeFileSync(path.join(targetArt, 'NaturalWonders.pcx'), Buffer.from([0x99, 0x88, 0x77]));
+  const first = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Falls' },
+      { key: 'img_path', value: 'NaturalWonders.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'naturalWonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const second = {
+    marker: '#Wonder',
+    fields: [
+      { key: 'name', value: 'Crater' },
+      { key: 'img_path', value: 'NaturalWonders.pcx' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'naturalWonders',
+      sourceScenarioPaths: [sourceRoot]
+    }
+  };
+  const result = prepareImportedDistrictArtWrites({
+    tabs: { naturalWonders: { model: { sections: [first, second] } } },
+    targetContentRoot: targetRoot,
+    targetScenarioRoots: [targetRoot],
+    c3xPath: '',
+    civ3Path: ''
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.writes.length, 1);
+  assert.equal(path.basename(result.writes[0].path), 'NaturalWonders_2.pcx');
+  assert.equal(first.fields.find((field) => field.key === 'img_path').value, 'NaturalWonders_2.pcx');
+  assert.equal(second.fields.find((field) => field.key === 'img_path').value, 'NaturalWonders_2.pcx');
+});
+
 test('loadBundle uses bundled C3X base docs when installed default config is incomplete', () => {
   const root = mkTmpDir();
   fs.writeFileSync(path.join(root, 'default.c3x_config.ini'), 'enable_districts = true\n', 'utf8');
@@ -209,21 +328,21 @@ test('loadBundle uses bundled C3X base docs when installed default config is inc
 
   assert.equal(row.value, '1');
   assert.match(bundle.tabs.base.fieldDocs.steal_plans_duration, /Steal Plans/i);
-  assert.match(bundle.tabs.base.fieldDocs.enable_unit_counters, /defender selection/i);
-  assert.match(bundle.tabs.base.fieldDocs.counter_rules, /self-atk/i);
+  assert.match(bundle.tabs.base.fieldDocs.unit_type_tags, /named group/i);
+  assert.match(bundle.tabs.base.fieldDocs.pollution_spawn_effect, /reduce-population/i);
   assert.match(bundle.tabs.base.fieldDocs.terrain_visibility_see_height, /Height a unit is considered/i);
   assert.doesNotMatch(bundle.tabs.base.fieldDocs.terrain_visibility_see_height, /Entries are ordered as/i);
-  assert.match(bundle.tabs.base.fieldDocs.terrain_visibility_seen_height, /occludes tiles beyond/i);
-  assert.match(bundle.tabs.base.fieldDocs.unit_visibility_rules, /last matching rule is used/i);
+  assert.match(bundle.tabs.base.fieldDocs.terrain_visibility_seen_height, /occlude tiles beyond/i);
+  assert.match(bundle.tabs.base.fieldDocs.unit_visibility_rules, /last rule matching a unit is used/i);
   const baseKeys = bundle.tabs.base.rows.map((candidate) => candidate.key);
   assert.ok(
     baseKeys.indexOf('terrain_visibility_flat_bonus') >= 0,
     'terrain_visibility_flat_bonus should load from bundled defaults'
   );
   assert.equal(
-    baseKeys.indexOf('terrain_visibility_bonus_can_stack'),
-    baseKeys.indexOf('terrain_visibility_flat_bonus') + 1,
-    'terrain_visibility_bonus_can_stack should appear directly after terrain_visibility_flat_bonus'
+    baseKeys.indexOf('terrain_visibility_flat_bonus'),
+    baseKeys.indexOf('terrain_visibility_bonus_can_stack') + 1,
+    'terrain_visibility_flat_bonus should appear directly after terrain_visibility_bonus_can_stack'
   );
 });
 

@@ -1044,6 +1044,7 @@ const BASE_SEGMENTED_OPTIONS = {
   seasonal_cycle_mode: ['off', 'timer', 'user-season', 'every-turn', 'on-day-night-hour', 'specified'],
   override_no_ai_patrol: ['none', 'one', 'zero'],
   override_barbarian_activity_level_for_scenario_maps: ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random'],
+  pollution_spawn_effect: ['standard', 'reduce-population', 'reduce-population-and-pollute-tile'],
   distribution_hub_yield_division_mode: ['flat', 'scale-by-city-count'],
   ai_distribution_hub_build_strategy: ['auto', 'by-city-count'],
   ai_auto_build_great_wall_strategy: ['all-borders', 'other-civ-bordered-only'],
@@ -1064,7 +1065,6 @@ const BASE_MULTI_CHOICE_LIST_OPTIONS = {
   special_zone_of_control_rules: ['amphibious', 'lethal', 'aerial', 'not-from-inside', 'all'],
   land_transport_rules: ['load-onto-boat', 'join-army', 'no-defense-from-inside', 'no-escape'],
   special_helicopter_rules: ['allow-on-carriers', 'passenger-airdrop', 'no-defense-from-inside', 'no-escape'],
-  show_tile_destruct_animation_after: ['bombard', 'bomb', 'pillage'],
   enabled_seasons: ['summer', 'fall', 'winter', 'spring']
 };
 
@@ -1075,8 +1075,7 @@ const BASE_STRUCTURED_LIST_FIELDS = new Set([
   'technology_perfume',
   'resource_perfume',
   'government_perfume',
-  'unit_limit_groups',
-  'unit_groups',
+  'unit_type_tags',
   'counter_rules',
   'unit_visibility_rules',
   'building_prereqs_for_units',
@@ -9262,7 +9261,7 @@ function serializeNameAmountItems(items) {
   return serializeStructuredEntries(entries);
 }
 
-function parseUnitLimitGroupItems(value) {
+function parseUnitTypeTagItems(value) {
   return parseDelimitedStructuredEntries(value).map((item) => {
     const i = item.indexOf(':');
     if (i < 0) return { name: normalizeConfigToken(item), units: [] };
@@ -9273,7 +9272,7 @@ function parseUnitLimitGroupItems(value) {
   });
 }
 
-function serializeUnitLimitGroupItems(items) {
+function serializeUnitTypeTagItems(items) {
   const entries = (Array.isArray(items) ? items : [])
     .map((it) => ({
       name: String(it && it.name || '').trim(),
@@ -9294,56 +9293,25 @@ function getBaseRowValueForRenderer(key) {
   return match ? String(match.value || '').trim() : '';
 }
 
-function getUnitLimitGroupOptions() {
-  return parseUnitLimitGroupItems(getBaseRowValueForRenderer('unit_limit_groups'))
+function getUnitTypeTagOptions() {
+  return parseUnitTypeTagItems(getBaseRowValueForRenderer('unit_type_tags'))
     .map((item) => normalizeConfigToken(item && item.name))
     .filter(Boolean)
     .map((name) => ({
       value: name,
       label: name,
-      displayLabel: `${name} (group)`,
+      displayLabel: `${name} (tag)`,
       entry: null,
-      group: 'unit-limit-group'
+      group: 'unit-type-tag'
     }))
     .sort((a, b) => String(a.label).localeCompare(String(b.label), 'en', { sensitivity: 'base' }));
 }
 
-function parseUnitCounterGroupItems(value) {
-  return parseDelimitedStructuredEntries(value).map((item) => {
-    const i = item.indexOf(':');
-    if (i < 0) return { name: normalizeConfigToken(item), units: [] };
-    return {
-      name: normalizeConfigToken(item.slice(0, i)),
-      units: parseBracketedOptionTokens(item.slice(i + 1))
-    };
-  });
-}
-
-function serializeUnitCounterGroupItems(items) {
-  const entries = (Array.isArray(items) ? items : [])
-    .map((it) => ({
-      name: String(it && it.name || '').trim(),
-      units: (Array.isArray(it && it.units) ? it.units : [])
-        .map((unit) => String(unit || '').trim())
-        .filter(Boolean)
-    }))
-    .filter((it) => it.name && it.units.length > 0)
-    .map((it) => `${quoteConfigToken(it.name)}: ${it.units.map((unit) => quoteConfigToken(unit)).join(' ')}`);
-  return serializeStructuredEntries(entries);
-}
-
-function getUnitCounterGroupOptions() {
-  return parseUnitCounterGroupItems(getBaseRowValueForRenderer('unit_groups'))
-    .map((item) => normalizeConfigToken(item && item.name))
-    .filter(Boolean)
-    .map((name) => ({
-      value: name,
-      label: name,
-      displayLabel: `${name} (group)`,
-      entry: null,
-      group: 'unit-counter-group'
-    }))
-    .sort((a, b) => String(a.label).localeCompare(String(b.label), 'en', { sensitivity: 'base' }));
+function getUnitOrTagReferenceOptions() {
+  return [
+    ...getUnitTypeTagOptions(),
+    ...getNamedReferenceOptionsForTab('units')
+  ];
 }
 
 function quoteCounterMatchToken(value) {
@@ -9354,12 +9322,12 @@ function quoteCounterMatchToken(value) {
 
 function makeCounterMatchOptions(currentValue = '') {
   const current = normalizeConfigToken(currentValue);
-  const groupOpts = getUnitCounterGroupOptions();
+  const tagOpts = getUnitTypeTagOptions();
   const unitOpts = getNamedReferenceOptionsForTab('units');
   const options = [
     { value: '*', label: 'Any (*)', displayLabel: 'Any (*)', entry: null, group: 'special' },
-    ...(groupOpts.length > 0 ? [{ separator: true, label: 'Counter Groups' }] : []),
-    ...groupOpts,
+    ...(tagOpts.length > 0 ? [{ separator: true, label: 'Unit Type Tags' }] : []),
+    ...tagOpts,
     ...(unitOpts.length > 0 ? [{ separator: true, label: 'Units' }] : []),
     ...unitOpts
   ];
@@ -10343,6 +10311,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     const editor = makeNamedListPickerEditor({
       tabKey: refTabKey,
       values: initial,
+      options: refTabKey === 'units' ? getUnitOrTagReferenceOptions() : getNamedReferenceOptionsForTab(refTabKey),
       onValuesChange: (values) => onChange(serializeQuotedWhitespaceStructuredEntries(values))
     });
     return editor;
@@ -10456,13 +10425,13 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     return { wrap, addBtn, api };
   };
 
-  if (row.key === 'unit_groups') {
-    let items = parseUnitCounterGroupItems(row.value);
+  if (row.key === 'unit_type_tags') {
+    let items = parseUnitTypeTagItems(row.value);
     if (items.length === 0) items = [{ name: '', units: [] }];
     const editor = buildIncrementalStructuredListEditor({
       items,
       createDefaultItem: () => ({ name: '', units: [] }),
-      addLabel: 'Add Group',
+      addLabel: 'Add Tag',
       lazyItemMount: true,
       eagerItemCount: 6,
       itemPlaceholderMinHeight: 106,
@@ -10470,22 +10439,30 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         const line = document.createElement('div');
         line.className = 'structured-card';
         const groupInput = document.createElement('input');
-        groupInput.placeholder = 'Group name';
+        groupInput.placeholder = 'Tag name';
         groupInput.value = String(item.name || '');
-        wireBaseGroupedUndo(groupInput, () => serializeUnitCounterGroupItems(api.items));
+        wireBaseGroupedUndo(groupInput, () => serializeUnitTypeTagItems(api.items));
         groupInput.addEventListener('input', () => {
           item.name = groupInput.value;
-          onChange(serializeUnitCounterGroupItems(api.items), { captureUndo: false });
+          onChange(serializeUnitTypeTagItems(api.items), { captureUndo: false });
         });
         line.appendChild(groupInput);
 
+        const tagOptions = getUnitTypeTagOptions().filter((opt) => normalizeConfigToken(opt.value) !== normalizeConfigToken(item.name));
+        const unitOptions = getNamedReferenceOptionsForTab('units');
         const members = makeNamedListTokenEditor({
           tabKey: 'units',
           values: Array.isArray(item.units) ? item.units : [],
-          options: getNamedReferenceOptionsForTab('units'),
+          options: [
+            ...(tagOptions.length > 0 ? [{ separator: true, label: 'Tags' }] : []),
+            ...tagOptions,
+            ...(unitOptions.length > 0 ? [{ separator: true, label: 'Units' }] : []),
+            ...unitOptions
+          ],
+          searchPlaceholder: 'Add unit or tag...',
           onValuesChange: (values) => {
             item.units = values;
-            onChange(serializeUnitCounterGroupItems(api.items));
+            onChange(serializeUnitTypeTagItems(api.items));
           }
         });
         line.appendChild(members);
@@ -10495,7 +10472,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         withRemoveIcon(del, ' Remove');
         del.addEventListener('click', () => {
           api.removeItem(item);
-          onChange(serializeUnitCounterGroupItems(api.items));
+          onChange(serializeUnitTypeTagItems(api.items));
         });
         line.appendChild(del);
         return line;
@@ -10558,7 +10535,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
           options: makeCounterMatchOptions(item.attacker || '*'),
           targetTabKey: 'units',
           currentValue: item.attacker || '*',
-          searchPlaceholder: 'Friendly unit or group...',
+          searchPlaceholder: 'Friendly unit or tag...',
           noneLabel: 'Any (*)',
           includeNone: false,
           onSelect: (next) => {
@@ -10566,7 +10543,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
             onChange(serializeCounterRules(api.items));
           }
         });
-        matchGrid.appendChild(makeLabeledControl('Friendly unit/group', attacker));
+        matchGrid.appendChild(makeLabeledControl('Friendly unit/tag', attacker));
         const vs = document.createElement('div');
         vs.className = 'c3x-counter-vs';
         vs.textContent = 'vs.';
@@ -10575,7 +10552,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
           options: makeCounterMatchOptions(item.defender || '*'),
           targetTabKey: 'units',
           currentValue: item.defender || '*',
-          searchPlaceholder: 'Enemy unit or group...',
+          searchPlaceholder: 'Enemy unit or tag...',
           noneLabel: 'Any (*)',
           includeNone: false,
           onSelect: (next) => {
@@ -10583,7 +10560,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
             onChange(serializeCounterRules(api.items));
           }
         });
-        matchGrid.appendChild(makeLabeledControl('Enemy unit/group', defender));
+        matchGrid.appendChild(makeLabeledControl('Enemy unit/tag', defender));
         matchRow.appendChild(matchGrid);
         block.appendChild(matchRow);
 
@@ -10760,12 +10737,12 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         const targetEditor = makeNamedListTokenEditor({
           tabKey: 'units',
           values: Array.isArray(item.targets) ? item.targets : [],
-          options: getNamedReferenceOptionsForTab('units'),
-          searchPlaceholder: 'Add class or unit...',
-          noneLabel: 'Add class or unit...',
+          options: getUnitOrTagReferenceOptions(),
+          searchPlaceholder: 'Add class, unit, or tag...',
+          noneLabel: 'Add class, unit, or tag...',
           specialOptions: [
             ...classOptions,
-            { separator: true, label: 'Units' }
+            { separator: true, label: 'Units and Tags' }
           ],
           onValuesChange: (values) => {
             item.targets = values;
@@ -10830,54 +10807,6 @@ function makeInputForBaseRow(row, onChange, options = {}) {
     return editor.wrap;
   }
 
-  if (row.key === 'unit_limit_groups') {
-    let items = parseUnitLimitGroupItems(row.value);
-    if (items.length === 0) items = [{ name: '', units: [] }];
-    const editor = buildIncrementalStructuredListEditor({
-      items,
-      createDefaultItem: () => ({ name: '', units: [] }),
-      addLabel: 'Add Group',
-      lazyItemMount: true,
-      eagerItemCount: 6,
-      itemPlaceholderMinHeight: 106,
-      buildItemNode: (item, api) => {
-        const line = document.createElement('div');
-        line.className = 'structured-card';
-        const groupInput = document.createElement('input');
-        groupInput.placeholder = 'Group name';
-        groupInput.value = String(item.name || '');
-        wireBaseGroupedUndo(groupInput, () => serializeUnitLimitGroupItems(api.items));
-        groupInput.addEventListener('input', () => {
-          item.name = groupInput.value;
-          onChange(serializeUnitLimitGroupItems(api.items), { captureUndo: false });
-        });
-        line.appendChild(groupInput);
-
-        const members = makeNamedListTokenEditor({
-          tabKey: 'units',
-          values: Array.isArray(item.units) ? item.units : [],
-          options: getNamedReferenceOptionsForTab('units'),
-          onValuesChange: (values) => {
-            item.units = values;
-            onChange(serializeUnitLimitGroupItems(api.items));
-          }
-        });
-        line.appendChild(members);
-
-        const del = document.createElement('button');
-        del.type = 'button';
-        withRemoveIcon(del, ' Remove');
-        del.addEventListener('click', () => {
-          api.removeItem(item);
-          onChange(serializeUnitLimitGroupItems(api.items));
-        });
-        line.appendChild(del);
-        return line;
-      }
-    });
-    return editor.wrap;
-  }
-
   if (row.key === 'unit_limits') {
     let items = parseNameAmountItems(row.value);
     if (items.length === 0) items = [{ name: '', amount: '' }];
@@ -10892,11 +10821,11 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         line.className = 'structured-card';
         const block = document.createElement('div');
         block.className = 'kv-row';
-        const groupOpts = getUnitLimitGroupOptions();
+        const tagOpts = getUnitTypeTagOptions();
         const unitOpts = getNamedReferenceOptionsForTab('units');
         const unitLimitOpts = [
-          ...(groupOpts.length > 0 ? [{ separator: true, label: 'Unit Limit Groups' }] : []),
-          ...groupOpts,
+          ...(tagOpts.length > 0 ? [{ separator: true, label: 'Unit Type Tags' }] : []),
+          ...tagOpts,
           ...(unitOpts.length > 0 ? [{ separator: true, label: 'Units' }] : []),
           ...unitOpts
         ];
@@ -10907,7 +10836,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
           options: unitLimitOpts,
           targetTabKey: 'units',
           currentValue: item.name || '-1',
-          searchPlaceholder: 'Search Unit or Group...',
+          searchPlaceholder: 'Search Unit or Tag...',
           noneLabel: '(none)',
           onSelect: (next) => {
             const normalized = String(next || '').trim();
@@ -11446,6 +11375,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
   if (row.key === 'production_perfume' || row.key === 'perfume_specs' || row.key === 'technology_perfume' || row.key === 'resource_perfume' || row.key === 'government_perfume') {
     const improvementOptions = getNamedReferenceOptionsForTab('improvements');
     const unitOptions = getNamedReferenceOptionsForTab('units');
+    const unitTypeTagOptions = getUnitTypeTagOptions();
     const techOptions = getNamedReferenceOptionsForTab('technologies');
     const resourceOptions = getNamedReferenceOptionsForTab('resources');
     const govOptions = getNamedReferenceOptionsForTab('governments');
@@ -11454,6 +11384,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
       if (!n) return 'improvements';
       if (improvementOptions.some((o) => o.value === n)) return 'improvements';
       if (unitOptions.some((o) => o.value === n)) return 'units';
+      if (unitTypeTagOptions.some((o) => o.value === n)) return 'units';
       return 'improvements';
     };
     const buildCombinedProductionOptions = (currentName) => {
@@ -11469,6 +11400,11 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         if (!value) return;
         duplicateCounts.set(value, (duplicateCounts.get(value) || 0) + 1);
       });
+      unitTypeTagOptions.forEach((opt) => {
+        const value = String(opt && opt.value || '').trim();
+        if (!value) return;
+        duplicateCounts.set(value, (duplicateCounts.get(value) || 0) + 1);
+      });
       const mapGroup = (options, groupLabel) => options.map((opt) => {
         const value = String(opt && opt.value || '').trim();
         const baseLabel = String(opt && opt.label || value).trim();
@@ -11480,9 +11416,11 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         };
       }).filter((opt) => !!opt.value);
       const groupedImprovements = mapGroup(improvementOptions, 'Improvement');
+      const groupedTags = mapGroup(unitTypeTagOptions, 'Unit Tag');
       const groupedUnits = mapGroup(unitOptions, 'Unit');
       const knownValues = new Set([
         ...groupedImprovements.map((opt) => opt.value),
+        ...groupedTags.map((opt) => opt.value),
         ...groupedUnits.map((opt) => opt.value)
       ]);
       const customOptions = normalizedCurrent && !knownValues.has(normalizedCurrent)
@@ -11492,6 +11430,8 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         ...customOptions,
         ...(groupedImprovements.length > 0 ? [{ separator: true, label: 'Improvements' }] : []),
         ...groupedImprovements,
+        ...(groupedTags.length > 0 ? [{ separator: true, label: 'Unit Type Tags' }] : []),
+        ...groupedTags,
         ...(groupedUnits.length > 0 ? [{ separator: true, label: 'Units' }] : []),
         ...groupedUnits
       ];
@@ -11542,7 +11482,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
             : targetKind === 'governments'
               ? govOptions
               : targetKind === 'units'
-                ? unitOptions
+                ? getUnitOrTagReferenceOptions()
                 : improvementOptions;
         const pickerTab = row.key === 'production_perfume' || row.key === 'perfume_specs'
           ? 'improvements'
@@ -11556,7 +11496,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
           targetTabKey: pickerTab,
           currentValue: item.name || '-1',
           searchPlaceholder: row.key === 'production_perfume' || row.key === 'perfume_specs'
-            ? 'Search Unit or Improvement...'
+            ? 'Search Unit, Tag, or Improvement...'
             : `Search ${toFriendlyKey(pickerTab).replace(/s$/, '')}...`,
           noneLabel: '(none)',
           onSelect: (next) => {
@@ -11700,6 +11640,7 @@ function makeInputForBaseRow(row, onChange, options = {}) {
         const unitsEditor = makeNamedListPickerEditor({
           tabKey: 'units',
           values: Array.isArray(item.units) ? item.units : [],
+          options: getUnitOrTagReferenceOptions(),
           onValuesChange: (nextValues) => {
             item.units = nextValues;
             onChange(serializeBuildingPrereqItems(api.items));
@@ -12130,11 +12071,18 @@ function renderBaseTab(tab) {
         dirtyBadge.classList.toggle('hidden', !isBaseRowDirty(row));
         refreshSourceBadge();
         setDirty(true);
-        if (String(row && row.key || '').trim() === 'unit_limit_groups') {
-          remountBaseInputByKey('unit_limits');
-        }
-        if (String(row && row.key || '').trim() === 'unit_groups') {
-          remountBaseInputByKey('counter_rules');
+        if (String(row && row.key || '').trim() === 'unit_type_tags') {
+          [
+            'unit_limits',
+            'counter_rules',
+            'production_perfume',
+            'building_prereqs_for_units',
+            'exclude_types_from_units_per_tile_limit',
+            'limit_defensive_retreat_on_water_to_types',
+            'ptw_like_artillery_targeting',
+            'can_bombard_only_sea_tiles',
+            'unit_visibility_rules'
+          ].forEach((dependentKey) => remountBaseInputByKey(dependentKey));
         }
       }, {
         undoKey: `BASE:${String(row && row.key || '').trim()}`
@@ -44700,14 +44648,72 @@ async function loadImportEntriesForTab(tabKey, source) {
   };
 }
 
-async function loadImportDistrictSections(source) {
+const SECTION_IMPORT_CONFIGS = {
+  districts: {
+    title: 'District: Import',
+    body: 'Select a source scenario, choose a district, then confirm the name for the imported district.',
+    sourcePrompt: 'Select a source scenario to load districts.',
+    emptySource: 'Selected scenario has no districts.',
+    searchPlaceholder: 'Search Districts in selected source...',
+    noneLabel: 'Choose district to import...',
+    fallbackName: 'District',
+    thumbClassName: 'district-entry-thumb',
+    statusName: 'district',
+    display: (section, index) => getDistrictSectionDisplay(section, index),
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadDistrictRepresentativePreview(section, holder, 35, null, {
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
+  },
+  wonders: {
+    title: 'Wonder District: Import',
+    body: 'Select a source scenario, choose a wonder district, then confirm the name for the imported wonder district.',
+    sourcePrompt: 'Select a source scenario to load wonder districts.',
+    emptySource: 'Selected scenario has no wonder districts.',
+    searchPlaceholder: 'Search Wonder Districts in selected source...',
+    noneLabel: 'Choose wonder district to import...',
+    fallbackName: 'Wonder District',
+    thumbClassName: 'wonder-entry-thumb',
+    statusName: 'wonder district',
+    display: (section, index) => {
+      const primary = getSectionTitle(section, SECTION_SCHEMAS.wonders, index);
+      return { primary, secondary: normalizeConfigToken(getFieldValue(section, 'img_path')) || '' };
+    },
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadWonderCompletedThumbnail(section, holder, 44, {
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
+  },
+  naturalWonders: {
+    title: 'Natural Wonder: Import',
+    body: 'Select a source scenario, choose a natural wonder, then confirm the name for the imported natural wonder.',
+    sourcePrompt: 'Select a source scenario to load natural wonders.',
+    emptySource: 'Selected scenario has no natural wonders.',
+    searchPlaceholder: 'Search Natural Wonders in selected source...',
+    noneLabel: 'Choose natural wonder to import...',
+    fallbackName: 'Natural Wonder',
+    thumbClassName: 'natural-wonder-entry-thumb',
+    statusName: 'natural wonder',
+    display: (section, index) => {
+      const primary = getSectionTitle(section, SECTION_SCHEMAS.naturalWonders, index);
+      return { primary, secondary: normalizeConfigToken(getFieldValue(section, 'terrain_type')) || '' };
+    },
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadNaturalWonderThumbnail(section, holder, 44, {
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
+  }
+};
+
+async function loadImportSectionSections(source, tabKey) {
   const scenarioPath = String((source && (source.scenarioPath || source.filePath)) || source || '').trim();
-  if (!scenarioPath) throw new Error('Choose a source scenario BIQ file to import districts.');
+  const config = SECTION_IMPORT_CONFIGS[tabKey] || SECTION_IMPORT_CONFIGS.districts;
+  if (!scenarioPath) throw new Error(`Choose a source scenario BIQ file to import ${config.statusName}s.`);
   const loaded = await window.c3xManager.loadBundle(buildLoadBundlePayload({
     mode: 'scenario',
     scenarioPath
   }));
-  const srcTab = loaded && loaded.tabs && loaded.tabs.districts;
+  const srcTab = loaded && loaded.tabs && loaded.tabs[tabKey];
   const sections = srcTab && srcTab.model && Array.isArray(srcTab.model.sections)
     ? srcTab.model.sections
     : [];
@@ -44718,6 +44724,10 @@ async function loadImportDistrictSections(source) {
   };
 }
 
+async function loadImportDistrictSections(source) {
+  return loadImportSectionSections(source, 'districts');
+}
+
 function loadImportDistrictPreviewThumb(section, holder, importSourcePath, importScenarioPaths) {
   return loadDistrictRepresentativePreview(section, holder, 35, null, {
     scenarioPath: importSourcePath,
@@ -44725,11 +44735,12 @@ function loadImportDistrictPreviewThumb(section, holder, importSourcePath, impor
   });
 }
 
-async function promptDistrictImportAction(tab) {
+async function promptSectionImportAction(tab, tabKey) {
+  const config = SECTION_IMPORT_CONFIGS[tabKey] || SECTION_IMPORT_CONFIGS.districts;
   if (!el.entityModalOverlay || !el.entityModalContent) return null;
-  if (el.entityModalTitle) el.entityModalTitle.textContent = 'District: Import';
+  if (el.entityModalTitle) el.entityModalTitle.textContent = config.title;
   if (el.entityModalBody) {
-    el.entityModalBody.textContent = 'Select a source scenario, choose a district, then confirm the name for the imported district.';
+    el.entityModalBody.textContent = config.body;
   }
   if (el.entityModalConfirm) {
     el.entityModalConfirm.textContent = 'Import';
@@ -44750,7 +44761,7 @@ async function promptDistrictImportAction(tab) {
   nameLabel.textContent = 'Name';
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
-  nameInput.placeholder = 'Imported district name';
+  nameInput.placeholder = `Imported ${config.statusName} name`;
   const nameFeedback = document.createElement('p');
   nameFeedback.className = 'reference-key-feedback';
   nameField.appendChild(nameLabel);
@@ -44831,8 +44842,8 @@ async function promptDistrictImportAction(tab) {
     selectedImportIndex = index;
     const section = importSections[index] || null;
     if (section && !nameEdited) {
-      const sourceName = getSectionFieldValueCaseInsensitive(section, 'name') || 'District';
-      nameInput.value = makeUniqueSectionName(tab, sourceName);
+      const sourceName = getSectionFieldValueCaseInsensitive(section, 'name') || config.fallbackName;
+      nameInput.value = makeUniqueSectionName(tab, sourceName, -1, config.fallbackName);
     }
     renderPicker();
     updateConfirmButton();
@@ -44843,20 +44854,20 @@ async function promptDistrictImportAction(tab) {
     if (!importFilePath) {
       const empty = document.createElement('p');
       empty.className = 'hint';
-      empty.textContent = 'Select a source scenario to load districts.';
+      empty.textContent = config.sourcePrompt;
       pickerHost.appendChild(empty);
       return;
     }
     if (importSections.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'hint';
-      empty.textContent = 'Selected scenario has no districts.';
+      empty.textContent = config.emptySource;
       pickerHost.appendChild(empty);
       return;
     }
     const picker = createReferencePicker({
       options: importSections.map((section, index) => {
-        const display = getDistrictSectionDisplay(section, index);
+        const display = config.display(section, index);
         return {
           value: String(index),
           label: display.secondary ? `${display.primary} (${display.secondary})` : display.primary,
@@ -44866,14 +44877,14 @@ async function promptDistrictImportAction(tab) {
       }),
       targetTabKey: '',
       currentValue: selectedImportIndex >= 0 ? String(selectedImportIndex) : '-1',
-      searchPlaceholder: 'Search Districts in selected source...',
-      noneLabel: 'Choose district to import...',
-      thumbClassName: 'district-entry-thumb',
+      searchPlaceholder: config.searchPlaceholder,
+      noneLabel: config.noneLabel,
+      thumbClassName: config.thumbClassName,
       renderOptionThumb: ({ holder, option }) => {
         const index = Number.parseInt(String(option && option.value || ''), 10);
         const section = Number.isFinite(index) ? importSections[index] : null;
         if (!section) return false;
-        void loadImportDistrictPreviewThumb(section, holder, importFilePath, importScenarioPaths);
+        void config.loadThumb(section, holder, importFilePath, importScenarioPaths);
         return true;
       },
       onSelect: (value) => {
@@ -44898,16 +44909,16 @@ async function promptDistrictImportAction(tab) {
     renderPicker();
     updateConfirmButton();
     try {
-      const loaded = await loadImportDistrictSections(source);
+      const loaded = await loadImportSectionSections(source, tabKey);
       importFilePath = String(loaded.importSourcePath || '').trim();
       importScenarioPaths = Array.isArray(loaded.importScenarioPaths) ? loaded.importScenarioPaths : [];
       importSections = loaded.sections;
       renderPicker();
       if (importSections.length === 0) {
-        setStatus('Selected scenario has no districts.', true);
+        setStatus(config.emptySource, true);
       }
     } catch (err) {
-      setStatus(err && err.message ? err.message : 'Could not load district import source.', true);
+      setStatus(err && err.message ? err.message : `Could not load ${config.statusName} import source.`, true);
     } finally {
       sourceSelect.disabled = false;
       updateConfirmButton();
@@ -44964,7 +44975,7 @@ async function promptDistrictImportAction(tab) {
       }
       const section = importSections[selectedImportIndex] || null;
       if (!section || !importFilePath) {
-        setStatus('Select one district to import.', true);
+        setStatus(`Select one ${config.statusName} to import.`, true);
         return;
       }
       resolveEntityModal({
@@ -44978,6 +44989,10 @@ async function promptDistrictImportAction(tab) {
     if (el.entityModalConfirm) el.entityModalConfirm.onclick = onConfirm;
     if (el.entityModalCancel) el.entityModalCancel.onclick = onCancel;
   });
+}
+
+async function promptDistrictImportAction(tab) {
+  return promptSectionImportAction(tab, 'districts');
 }
 
 function getImportReferenceIndexMap(sourceMaps, tabKey) {
@@ -66474,7 +66489,7 @@ function loadDistrictRepresentativePreview(section, holder, canvasSize = 28, onL
     .catch(() => false);
 }
 
-function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
+function loadWonderCompletedThumbnail(section, holder, canvasSize = 35, options = {}) {
   if (!holder) return Promise.resolve(false);
   holder.innerHTML = '';
   const canvas = document.createElement('canvas');
@@ -66490,7 +66505,8 @@ function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
   const cacheKey = JSON.stringify({
     kind: 'wonder-list-thumb',
     c3xPath: state.settings.c3xPath,
-    scenarioPath: state.settings.scenarioPath,
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths(),
     fileName,
     row,
     col,
@@ -66510,8 +66526,8 @@ function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
     c3xPath: state.settings.c3xPath,
     fileName,
     crop: { row, col, w: crop.w, h: crop.h },
-    scenarioPath: state.settings.scenarioPath,
-    scenarioPaths: getScenarioPreviewPaths()
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths()
   }).then((res) => {
     if (!res || !res.ok) return false;
     setPreviewCache(cacheKey, res);
@@ -66519,7 +66535,7 @@ function loadWonderCompletedThumbnail(section, holder, canvasSize = 35) {
   }).catch(() => false);
 }
 
-function loadNaturalWonderThumbnail(section, holder, canvasSize = 35) {
+function loadNaturalWonderThumbnail(section, holder, canvasSize = 35, options = {}) {
   if (!holder) return Promise.resolve(false);
   holder.innerHTML = '';
   const canvas = document.createElement('canvas');
@@ -66536,7 +66552,8 @@ function loadNaturalWonderThumbnail(section, holder, canvasSize = 35) {
   const cacheKey = JSON.stringify({
     kind: 'natural-wonder-list-thumb',
     c3xPath: state.settings.c3xPath,
-    scenarioPath: state.settings.scenarioPath,
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths(),
     fileName,
     row,
     col,
@@ -66556,8 +66573,8 @@ function loadNaturalWonderThumbnail(section, holder, canvasSize = 35) {
     c3xPath: state.settings.c3xPath,
     fileName,
     crop: { row, col, w: crop.w, h: crop.h },
-    scenarioPath: state.settings.scenarioPath,
-    scenarioPaths: getScenarioPreviewPaths()
+    scenarioPath: options.scenarioPath || state.settings.scenarioPath,
+    scenarioPaths: Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths()
   }).then((res) => {
     if (!res || !res.ok) return false;
     setPreviewCache(cacheKey, res);
@@ -68347,8 +68364,8 @@ function getSectionFieldValueCaseInsensitive(section, key) {
   return field ? String(field.value || '').trim() : '';
 }
 
-function makeUniqueSectionName(tab, baseName, selectedIndex = -1) {
-  const cleanBase = String(baseName || '').trim() || 'District';
+function makeUniqueSectionName(tab, baseName, selectedIndex = -1, fallbackName = 'District') {
+  const cleanBase = String(baseName || '').trim() || String(fallbackName || '').trim() || 'District';
   const sections = Array.isArray(tab && tab.model && tab.model.sections) ? tab.model.sections : [];
   const used = new Set();
   sections.forEach((section, index) => {
@@ -68364,15 +68381,17 @@ function makeUniqueSectionName(tab, baseName, selectedIndex = -1) {
   return `${cleanBase} ${Date.now()}`;
 }
 
-function cloneDistrictSectionForCreate(tab, sourceSection, mode, options = {}) {
-  const source = sourceSection ? deepCloneUiValue(sourceSection) : createSectionFromTemplate('districts');
+function cloneSectionForCreate(tab, sourceSection, mode, tabKey, options = {}) {
+  const schema = SECTION_SCHEMAS[tabKey] || SECTION_SCHEMAS.districts || {};
+  const source = sourceSection ? deepCloneUiValue(sourceSection) : createSectionFromTemplate(tabKey);
   const section = {
-    marker: source.marker || (SECTION_SCHEMAS.districts && SECTION_SCHEMAS.districts.marker) || '#District',
+    marker: source.marker || schema.marker || '#District',
     fields: Array.isArray(source.fields) ? source.fields.map((field) => deepCloneUiValue(field)) : [],
     comments: Array.isArray(source.comments) ? source.comments.slice() : []
   };
-  const originalName = String(options.name || getSectionFieldValueCaseInsensitive(section, 'name') || 'District').trim();
-  const newName = makeUniqueSectionName(tab, mode === 'copy' ? `${originalName} Copy` : originalName, -1);
+  const fallbackName = String(schema.entityName || 'District').trim();
+  const originalName = String(options.name || getSectionFieldValueCaseInsensitive(section, 'name') || fallbackName).trim();
+  const newName = makeUniqueSectionName(tab, mode === 'copy' ? `${originalName} Copy` : originalName, -1, fallbackName);
   const hadDisplayName = section.fields.some((field) => String(field && field.key || '').trim().toLowerCase() === 'display_name');
   section.fields = section.fields.filter((field) => {
     const key = String(field && field.key || '').trim().toLowerCase();
@@ -68381,12 +68400,17 @@ function cloneDistrictSectionForCreate(tab, sourceSection, mode, options = {}) {
   section.fields.unshift({ key: 'name', value: newName });
   if (hadDisplayName) section.fields.splice(1, 0, { key: 'display_name', value: newName });
   if (options.importSourcePath) {
-    section._pendingDistrictImport = {
+    section._pendingSectionImport = {
+      tabKey: String(tabKey || '').trim(),
       sourceBiqPath: String(options.importSourcePath || ''),
       sourceScenarioPaths: Array.isArray(options.importScenarioPaths) ? options.importScenarioPaths.slice() : []
     };
   }
   return section;
+}
+
+function cloneDistrictSectionForCreate(tab, sourceSection, mode, options = {}) {
+  return cloneSectionForCreate(tab, sourceSection, mode, 'districts', options);
 }
 
 function addSection(tab, tabKey) {
@@ -68397,19 +68421,24 @@ function addSection(tab, tabKey) {
   renderActiveTab();
 }
 
-function copySelectedDistrictSection(tab) {
+function copySelectedSection(tab, tabKey) {
   if (!tab || !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0) return;
-  const selectedIndex = Math.max(0, Math.min(state.sectionSelection.districts || 0, tab.model.sections.length - 1));
+  const selectedIndex = Math.max(0, Math.min(state.sectionSelection[tabKey] || 0, tab.model.sections.length - 1));
   const selected = tab.model.sections[selectedIndex];
   if (!selected) return;
-  rememberUndoSnapshotForKey('SECTION_TAB:districts');
-  const section = cloneDistrictSectionForCreate(tab, selected, 'copy');
+  rememberUndoSnapshotForKey(`SECTION_TAB:${String(tabKey || '').trim()}`);
+  const section = cloneSectionForCreate(tab, selected, 'copy', tabKey);
   tab.model.sections.unshift(section);
-  state.sectionSelection.districts = 0;
-  state.sectionDetailScrollTop.districts = 0;
+  state.sectionSelection[tabKey] = 0;
+  state.sectionDetailScrollTop[tabKey] = 0;
   setDirty(true);
-  setStatus(`Copied "${getSectionFieldValueCaseInsensitive(selected, 'name') || 'district'}".`);
+  const schema = SECTION_SCHEMAS[tabKey] || {};
+  setStatus(`Copied "${getSectionFieldValueCaseInsensitive(selected, 'name') || String(schema.entityName || 'entry').toLowerCase()}".`);
   renderActiveTab();
+}
+
+function copySelectedDistrictSection(tab) {
+  copySelectedSection(tab, 'districts');
 }
 
 function deleteSelectedSection(tab, tabKey) {
@@ -69997,13 +70026,13 @@ function renderSectionTab(tab, tabKey) {
     addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
     actionRow.appendChild(addSectionBtn);
 
-    if (tabKey === 'districts') {
+    if (tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders') {
       const copySectionBtn = document.createElement('button');
       copySectionBtn.type = 'button';
       copySectionBtn.className = 'ghost action-copy';
       copySectionBtn.textContent = '⧉ Copy';
       copySectionBtn.disabled = !tab.model || !Array.isArray(tab.model.sections) || tab.model.sections.length <= 0;
-      copySectionBtn.addEventListener('click', () => copySelectedDistrictSection(tab));
+      copySectionBtn.addEventListener('click', () => copySelectedSection(tab, tabKey));
       actionRow.appendChild(copySectionBtn);
 
       const importSectionBtn = document.createElement('button');
@@ -70011,23 +70040,24 @@ function renderSectionTab(tab, tabKey) {
       importSectionBtn.className = 'ghost action-import';
       importSectionBtn.textContent = '⇪ Import';
       importSectionBtn.addEventListener('click', async () => {
+        const importConfig = SECTION_IMPORT_CONFIGS[tabKey] || SECTION_IMPORT_CONFIGS.districts;
         try {
-          const result = await promptDistrictImportAction(tab);
+          const result = await promptSectionImportAction(tab, tabKey);
           if (!result || !result.importedSection) return;
-          rememberUndoSnapshotForKey('SECTION_TAB:districts');
-          const section = cloneDistrictSectionForCreate(tab, result.importedSection, 'import', {
+          rememberUndoSnapshotForKey(`SECTION_TAB:${String(tabKey || '').trim()}`);
+          const section = cloneSectionForCreate(tab, result.importedSection, 'import', tabKey, {
             name: result.name,
             importSourcePath: result.importFilePath,
             importScenarioPaths: result.importScenarioPaths
           });
           tab.model.sections.unshift(section);
-          state.sectionSelection.districts = 0;
-          state.sectionDetailScrollTop.districts = 0;
+          state.sectionSelection[tabKey] = 0;
+          state.sectionDetailScrollTop[tabKey] = 0;
           setDirty(true);
-          setStatus(`Imported "${getSectionFieldValueCaseInsensitive(result.importedSection, 'name') || 'district'}".`);
+          setStatus(`Imported "${getSectionFieldValueCaseInsensitive(result.importedSection, 'name') || importConfig.statusName}".`);
           renderActiveTab();
         } catch (err) {
-          setStatus(err && err.message ? err.message : 'District import failed.', true);
+          setStatus(err && err.message ? err.message : `${importConfig.fallbackName} import failed.`, true);
         }
       });
       actionRow.appendChild(importSectionBtn);

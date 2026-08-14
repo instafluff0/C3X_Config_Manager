@@ -82,7 +82,13 @@ test('C3X base manifest extras are limited to explicit forward-compat keys', () 
   const manifestKeys = Object.keys(C3X_BASE_MANIFEST);
   const extras = manifestKeys.filter((key) => !defaultSet.has(key)).sort();
 
-  assert.deepEqual(extras, []);
+  assert.deepEqual(extras, [
+    'show_tile_destruct_animation_after',
+    'show_tile_destruction_animation_for_turns'
+  ]);
+  extras.forEach((key) => {
+    assert.equal(C3X_BASE_MANIFEST[key].release, 'R29', `${key} must stay quarantined behind R29`);
+  });
 });
 
 test('C3X base manifest type classifications match shipped default values', () => {
@@ -147,6 +153,7 @@ test('C3X base manifest string families stay explicit and audited', () => {
     override_barbarian_activity_level_for_scenario_maps: 'segmented_enum',
     override_no_ai_patrol: 'segmented_enum',
     pinned_season_for_seasonal_cycle: 'segmented_enum',
+    pollution_spawn_effect: 'segmented_enum',
     production_perfume: 'name_amount_list',
     ptw_like_artillery_targeting: 'quoted_reference_list',
     resource_perfume: 'name_amount_list',
@@ -162,8 +169,7 @@ test('C3X base manifest string families stay explicit and audited', () => {
     terrain_visibility_see_height: 'fixed_int_array',
     terrain_visibility_seen_height: 'fixed_int_array',
     unit_cycle_search_criteria: 'segmented_enum',
-    unit_groups: 'unit_counter_groups',
-    unit_limit_groups: 'unit_limit_groups',
+    unit_type_tags: 'unit_type_tags',
     unit_limits: 'unit_limits',
     unit_visibility_rules: 'unit_visibility_rules',
     work_area_improvements: 'name_amount_list',
@@ -191,13 +197,15 @@ test('C3X base manifest enum, bitfield, and reference metadata stays source-back
   assert.deepEqual(C3X_BASE_MANIFEST.special_helicopter_rules.options, ['allow-on-carriers', 'passenger-airdrop', 'no-defense-from-inside', 'no-escape']);
   assert.deepEqual(C3X_BASE_MANIFEST.enabled_seasons.options, ['summer', 'fall', 'winter', 'spring']);
   assert.deepEqual(C3X_BASE_MANIFEST.pinned_season_for_seasonal_cycle.options, ['summer', 'fall', 'winter', 'spring']);
+  assert.deepEqual(C3X_BASE_MANIFEST.pollution_spawn_effect.options, ['standard', 'reduce-population', 'reduce-population-and-pollute-tile']);
   assert.deepEqual(C3X_BASE_MANIFEST.show_tile_destruct_animation_after.options, ['bombard', 'bomb', 'pillage']);
   assert.deepEqual(C3X_BASE_MANIFEST.override_no_ai_patrol.options, ['none', 'one', 'zero']);
   assert.deepEqual(C3X_BASE_MANIFEST.override_barbarian_activity_level_for_scenario_maps.options, ['none', 'No Barbarians', 'Sedentary', 'Roaming', 'Restless', 'Raging', 'Random']);
 
-  assert.equal(C3X_BASE_MANIFEST.show_tile_destruct_animation_after.release, 'R28');
-  assert.equal(C3X_BASE_MANIFEST.show_tile_destruction_animation_for_turns.release, 'R28');
+  assert.equal(C3X_BASE_MANIFEST.show_tile_destruct_animation_after.release, 'R29');
+  assert.equal(C3X_BASE_MANIFEST.show_tile_destruction_animation_for_turns.release, 'R29');
   assert.equal(C3X_BASE_MANIFEST.enable_unit_counters.release, 'R28');
+  assert.equal(C3X_BASE_MANIFEST.unit_type_tags.release, 'R28');
   assert.equal(C3X_BASE_MANIFEST.unit_visibility_rules.release, 'R28');
   assert.equal(C3X_BASE_MANIFEST.can_bombard_only_sea_tiles.referenceTab, 'units');
   assert.equal(C3X_BASE_MANIFEST.exclude_types_from_units_per_tile_limit.referenceTab, 'units');
@@ -226,8 +234,7 @@ test('C3X base manifest assigns every key to an explicit audit tier', () => {
     counter_rules: 'special-syntax-codec',
     fixed_bool_array: 'special-syntax-codec',
     fixed_int_array: 'special-syntax-codec',
-    unit_counter_groups: 'special-syntax-codec',
-    unit_limit_groups: 'special-syntax-codec',
+    unit_type_tags: 'special-syntax-codec',
     unit_limits: 'special-syntax-codec',
     unit_visibility_rules: 'special-syntax-codec'
   };
@@ -259,8 +266,8 @@ test('renderer C3X version gating caps future saved versions at the supported re
     C3X_RELEASE_BY_KEY: Object.freeze({
       enable_districts: 'R26',
       seasonal_cycle_mode: 'R28',
-      show_tile_destruct_animation_after: 'R28',
-      show_tile_destruction_animation_for_turns: 'R28'
+      show_tile_destruct_animation_after: 'R29',
+      show_tile_destruction_animation_for_turns: 'R29'
     }),
     exports: {}
   };

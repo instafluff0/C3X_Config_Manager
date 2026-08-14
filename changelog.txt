@@ -1,5 +1,8 @@
 * RELEASE 28.0.0
-- Shortened R28 terrain visibility help text and moved terrain_visibility_bonus_can_stack below terrain_visibility_flat_bonus.
+- Refreshed bundled C3X base defaults for the current R28 pre-release, added AI diplomacy and pollution spawn options, replaced retired unit group fields with `unit_type_tags`, and quarantined tile-destruction animation base keys behind R29.
+- Dedupe imported Wonder District and Natural Wonder PCX sheets by file contents so repeated imports share one scenario-local renamed copy.
+- Added Copy and scenario Import actions to Wonder Districts and Natural Wonders, including scenario-local PCX localization for imported section art.
+- Shortened R28 terrain visibility help text and kept terrain_visibility_bonus_can_stack adjacent to terrain_visibility_flat_bonus.
 - Hardened global search jumps into C3X Base fields so search navigation cannot blank the tab on render failure.
 - Kept R28 terrain visibility settings as separate searchable Base fields while preserving their terrain thumbnail array editors.
 - Simplified R28 counter-rule experience conditions to no-art dropdowns and defaulted enemy matches to Any.
@@ -20,10 +23,10 @@
 - Added Tile Animation INI quality checks with a staged repair action that writes canonical DEFAULT/ATTACK1-only INIs through the normal Save transaction.
 - Fixed District animation previews for INI files whose FLC values are relative to the `Art/Animations` root, such as Wind Farm.
 - Added an FLC Workshop button to Tile Animations that opens the selected animation's resolved FLC directly.
-- Fixed Unit Limits editing so newly edited unsaved `unit_limit_groups` labels immediately appear in the Unit Limits picker.
+- Fixed Unit Limits editing so newly edited unsaved `unit_type_tags` labels immediately appear in the Unit Limits picker.
 - Fixed Tile Animation and District/Natural Wonder animation previews so scenario-local `Art/Animations` INI/FLC files are checked before falling back to the C3X install.
-- Added current R28 C3X base config fields for unit limit groups, invisible-unit detection distances, and Steal Plans duration, including structured unit-limit group editing and QA.
-- Added R28 base manifest coverage for tile destruction animation settings so valid shipped keys no longer show unknown C3X warnings.
+- Added current R28 C3X base config fields for unit type tags, invisible-unit detection distances, and Steal Plans duration, including structured unit-type tag editing and QA.
+- Quarantined base manifest coverage for tile destruction animation settings behind R29 pending C3X support.
 - Updated the default C3X feature-gate setting to R28 so R28-only UI such as Tile Animations is shown by default after loading settings.
 - Fixed the empty Tile Animations tab state so C3X installs without `default.tile_animations.txt` still render the editor shell instead of blanking the UI.
 - Fixed Tile Animations previews so they default to the southwest FLC direction and render at native pixel size inside a consistent preview frame.
@@ -250,7 +253,7 @@
 - Kept contextual C3X controls editable in Standard Game on Civs, Improvements, Units, and Techs while BIQ fields remain read-only, so changes save through the active C3X config target.
 - Restyled C3X era alias matrices as bordered tables with transparent table-cell editing, while keeping the same structured alias editors and serialization.
 - Added contextual C3X unit-rule toggles to the Units tab for PTW artillery targeting, sea-only bombarders, unit-per-tile-limit exemptions, and water defensive retreat limits.
-- Audited C3X array-style base fields and tightened structured parsing so comma-delimited fields preserve newline-wrapped item bodies, while `show_tile_destruct_animation_after` now uses the token-list editor.
+- Audited C3X array-style base fields and tightened structured parsing so comma-delimited fields preserve newline-wrapped item bodies; `show_tile_destruct_animation_after` is now quarantined for R29.
 - Added contextual C3X era alias editors to the Civs tab so each civilization can edit its civ and leader aliases alongside its BIQ identity and leader fields.
 - Replaced the C3X `civ_aliases_by_era` editor with a civilization picker and era table that groups noun, adjective, and formal-name aliases while preserving raw unmatched/duplicate source entries.
 - Replaced the C3X `leader_aliases_by_era` editor with a leader picker and era table for replacement name, gender, and title aliases.

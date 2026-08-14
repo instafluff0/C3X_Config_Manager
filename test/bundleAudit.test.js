@@ -2050,18 +2050,17 @@ test('auditLoadedBundle reports C3X base references that do not match loaded rul
           { key: 'enable_great_wall_districts', value: 'true' },
           { key: 'auto_build_great_wall_around_territory', value: 'true' },
           { key: 'buildings_generating_resources', value: '["Hollywood": local yields "Films"]' },
-          { key: 'building_prereqs_for_units', value: '["Barracks": "Warrior" "Ghost Unit"]' },
-          { key: 'production_perfume', value: '["Temple": 20, "Archer": -50%, "Missing Producer": 10]' },
+          { key: 'building_prereqs_for_units', value: '["Barracks": "Warrior" "Fast Units" "Ghost Unit"]' },
+          { key: 'production_perfume', value: '["Temple": 20, "Archer": -50%, "Fast Units": 10, "Missing Producer": 10]' },
           { key: 'technology_perfume', value: '["Electricity": 12, "Missing Tech": 5]' },
           { key: 'resource_perfume', value: '["Films": 20, "Missing Resource": 1]' },
           { key: 'government_perfume', value: '["Democracy": 1, "Missing Government": 2]' },
           { key: 'work_area_improvements', value: '["Aqueduct": 3, "Missing Building": 2]' },
-          { key: 'unit_groups', value: '["Fast Units": "Warrior" "Ghost Counter Unit"]' },
+          { key: 'unit_type_tags', value: '["Fast Units": "Warrior" "Archer" "Ghost Counter Unit", "Mounted Units": "Fast Units" "Settler"]' },
           { key: 'counter_rules', value: '["Fast Units" vs "Ghost Combatant" self-atk 125 terrain moon district "Ghost District"]' },
-          { key: 'unit_limit_groups', value: '["Infantry Units": "Warrior" "Archer" "Missing Group Unit"]' },
-          { key: 'unit_limits', value: '["Settler": 1 per-city, "Infantry Units": 4, "Missing Unit": 1]' },
-          { key: 'unit_visibility_rules', value: '[Sea: 2 when-fortified-same-continent, "Ghost Spotter": 1 + 2 times-bonus]' },
-          { key: 'can_bombard_only_sea_tiles', value: '["Battleship" "Missing Boat"]' },
+          { key: 'unit_limits', value: '["Settler": 1 per-city, "Fast Units": 4, "Missing Unit": 1]' },
+          { key: 'unit_visibility_rules', value: '[Sea: 2 when-fortified-same-continent, "Fast Units": 1 + 2 times-bonus, "Ghost Spotter": 1 + 2 times-bonus]' },
+          { key: 'can_bombard_only_sea_tiles', value: '["Battleship" "Fast Units" "Missing Boat"]' },
           { key: 'great_wall_auto_build_wonder_name', value: '"Hollywood"' }
         ]
       },
@@ -2096,22 +2095,25 @@ test('auditLoadedBundle reports C3X base references that do not match loaded rul
   const messages = ((result.tabs.base || {}).general || []).map((entry) => String(entry.message || ''));
   assert.ok(messages.some((msg) => /buildings_generating_resources.+Hollywood/.test(msg)));
   assert.ok(messages.some((msg) => /building_prereqs_for_units.+Ghost Unit/.test(msg)));
+  assert.equal(messages.some((msg) => /building_prereqs_for_units.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /production_perfume.+Missing Producer/.test(msg)));
+  assert.equal(messages.some((msg) => /production_perfume.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /technology_perfume.+Missing Tech/.test(msg)));
   assert.ok(messages.some((msg) => /resource_perfume.+Missing Resource/.test(msg)));
   assert.ok(messages.some((msg) => /government_perfume.+Missing Government/.test(msg)));
   assert.ok(messages.some((msg) => /work_area_improvements.+Missing Building/.test(msg)));
-  assert.ok(messages.some((msg) => /unit_groups.+Ghost Counter Unit/.test(msg)));
+  assert.ok(messages.some((msg) => /unit_type_tags.+Ghost Counter Unit/.test(msg)));
   assert.ok(messages.some((msg) => /counter_rules.+Ghost Combatant/.test(msg)));
   assert.ok(messages.some((msg) => /counter_rules.+moon/.test(msg)));
   assert.ok(messages.some((msg) => /counter_rules.+Ghost District/.test(msg)));
   assert.equal(messages.some((msg) => /counter_rules.+Fast Units/.test(msg)), false);
-  assert.ok(messages.some((msg) => /unit_limit_groups.+Missing Group Unit/.test(msg)));
   assert.ok(messages.some((msg) => /unit_limits.+Missing Unit/.test(msg)));
-  assert.equal(messages.some((msg) => /unit_limits.+Infantry Units/.test(msg)), false);
+  assert.equal(messages.some((msg) => /unit_limits.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /unit_visibility_rules.+Ghost Spotter/.test(msg)));
+  assert.equal(messages.some((msg) => /unit_visibility_rules.+Fast Units/.test(msg)), false);
   assert.equal(messages.some((msg) => /unit_visibility_rules.+Sea/.test(msg)), false);
   assert.ok(messages.some((msg) => /can_bombard_only_sea_tiles.+Missing Boat/.test(msg)));
+  assert.equal(messages.some((msg) => /can_bombard_only_sea_tiles.+Fast Units/.test(msg)), false);
   assert.ok(messages.some((msg) => /great_wall_auto_build_wonder_name.+Hollywood/.test(msg)));
   assert.equal(messages.some((msg) => /buildings_generating_resources.+Films/.test(msg)), false);
 });

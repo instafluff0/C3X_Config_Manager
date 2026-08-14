@@ -1279,18 +1279,7 @@ function parseNameAmountItems(value) {
   });
 }
 
-function parseUnitLimitGroupItems(value) {
-  return parseDelimitedStructuredEntries(value).map((item) => {
-    const i = item.indexOf(':');
-    if (i < 0) return { name: normalizeConfigToken(item), units: [] };
-    return {
-      name: normalizeConfigToken(item.slice(0, i)),
-      units: parseBracketedOptionTokens(item.slice(i + 1))
-    };
-  });
-}
-
-function parseUnitCounterGroupItems(value) {
+function parseUnitTypeTagItems(value) {
   return parseDelimitedStructuredEntries(value).map((item) => {
     const i = item.indexOf(':');
     if (i < 0) return { name: normalizeConfigToken(item), units: [] };
@@ -1502,14 +1491,14 @@ function lintBaseConfig(bundle, result) {
       }
       return;
     }
-    if (meta.family === 'unit_counter_groups') {
+    if (meta.family === 'unit_type_tags') {
       if (!hasBalancedQuotes(value)) {
         addGeneralIssue(result, 'base', `C3X key "${key}" has malformed quoted list syntax.`, 'base-malformed-list');
         return;
       }
       const malformed = parseDelimitedStructuredEntries(value).filter((entry) => entry && entry.indexOf(':') < 0);
       if (malformed.length > 0) {
-        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed unit counter group syntax.`, 'base-malformed-unit-counter-groups');
+        addGeneralIssue(result, 'base', `C3X key "${key}" has malformed unit type tag syntax.`, 'base-malformed-unit-type-tags');
       }
       return;
     }
@@ -1626,8 +1615,8 @@ function addBaseReferenceIssue(result, key, targetLabel, invalidValues) {
   );
 }
 
-function collectValidUnitLimitGroupLabels(bundle, unitSet) {
-  const groups = parseUnitLimitGroupItems(getBaseRowValue(bundle, 'unit_limit_groups'));
+function collectValidUnitTypeTagLabels(bundle, unitSet) {
+  const groups = parseUnitTypeTagItems(getBaseRowValue(bundle, 'unit_type_tags'));
   const hasUnitSet = unitSet instanceof Set && unitSet.size > 0;
   const labels = new Set();
   groups.forEach((group) => {
@@ -1636,35 +1625,18 @@ function collectValidUnitLimitGroupLabels(bundle, unitSet) {
     const members = Array.isArray(group && group.units) ? group.units : [];
     const hasValidMember = !hasUnitSet || members.some((unit) => {
       const lookup = normalizeReferenceLookup(unit);
-      return lookup && unitSet.has(lookup);
+      return lookup && lookup !== 'to' && (unitSet.has(lookup) || labels.has(lookup));
     });
     if (hasValidMember) labels.add(normalizeReferenceLookup(label));
   });
   return labels;
 }
 
-function collectValidUnitCounterGroupLabels(bundle, unitSet) {
-  const groups = parseUnitCounterGroupItems(getBaseRowValue(bundle, 'unit_groups'));
-  const hasUnitSet = unitSet instanceof Set && unitSet.size > 0;
-  const labels = new Set();
-  groups.forEach((group) => {
-    const label = normalizeConfigToken(group && group.name);
-    if (!label) return;
-    const members = Array.isArray(group && group.units) ? group.units : [];
-    const hasValidMember = !hasUnitSet || members.some((unit) => {
-      const lookup = normalizeReferenceLookup(unit);
-      return lookup && unitSet.has(lookup);
-    });
-    if (hasValidMember) labels.add(normalizeReferenceLookup(label));
-  });
-  return labels;
-}
-
-function isKnownCounterMatchToken(value, unitSet, groupLabels) {
+function isKnownUnitOrTagToken(value, unitSet, tagLabels) {
   const display = normalizeConfigToken(value);
   const lookup = normalizeReferenceLookup(display);
   if (!lookup || lookup === '*') return true;
-  if (groupLabels instanceof Set && groupLabels.has(lookup)) return true;
+  if (tagLabels instanceof Set && tagLabels.has(lookup)) return true;
   return referenceKnownInAny(display, [unitSet]);
 }
 
@@ -1673,6 +1645,7 @@ function auditBaseReferenceCompatibility(bundle, result) {
   const list = Array.isArray(rows) ? rows : [];
   if (list.length <= 0) return;
   const context = buildBaseReferenceContext(bundle);
+  const unitTypeTagLabels = collectValidUnitTypeTagLabels(bundle, context.units);
 
   list.forEach((row) => {
     const key = String(row && row.key || '').trim();
@@ -1690,14 +1663,15 @@ function auditBaseReferenceCompatibility(bundle, result) {
     if (key === 'building_prereqs_for_units') {
       const items = parseBuildingPrereqItems(value);
       addBaseReferenceIssue(result, key, 'improvement/building name', collectInvalidReferences(items.map((item) => item.building), context.improvements));
-      addBaseReferenceIssue(result, key, 'unit name', collectInvalidReferences(items.flatMap((item) => item.units || []), context.units));
+      const invalidUnits = items.flatMap((item) => item.units || []).filter((name) => !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels));
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalidUnits));
       return;
     }
 
     if (key === 'production_perfume' || key === 'perfume_specs') {
       const names = parseNameAmountItems(value).map((item) => item.name);
-      const invalid = names.filter((name) => !referenceKnownInAny(name, [context.improvements, context.units]));
-      addBaseReferenceIssue(result, key, 'unit or improvement name', collectUniqueValues(invalid));
+      const invalid = names.filter((name) => !referenceKnownInAny(name, [context.improvements, context.units]) && !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels));
+      addBaseReferenceIssue(result, key, 'unit, unit type tag, or improvement name', collectUniqueValues(invalid));
       return;
     }
 
@@ -1721,34 +1695,38 @@ function auditBaseReferenceCompatibility(bundle, result) {
       return;
     }
 
-    if (key === 'unit_limit_groups') {
-      const groups = parseUnitLimitGroupItems(value);
-      addBaseReferenceIssue(result, key, 'unit name', collectInvalidReferences(groups.flatMap((item) => item.units || []), context.units));
-      return;
-    }
-
-    if (key === 'unit_groups') {
-      const groups = parseUnitCounterGroupItems(value);
-      addBaseReferenceIssue(result, key, 'unit name', collectInvalidReferences(groups.flatMap((item) => item.units || []), context.units));
+    if (key === 'unit_type_tags') {
+      const localLabels = new Set();
+      const invalid = [];
+      parseUnitTypeTagItems(value).forEach((group) => {
+        const members = Array.isArray(group && group.units) ? group.units : [];
+        members.forEach((member) => {
+          const lookup = normalizeReferenceLookup(member);
+          if (!lookup || lookup === 'to') return;
+          if (!referenceKnownInAny(member, [context.units]) && !localLabels.has(lookup)) invalid.push(member);
+        });
+        const label = normalizeReferenceLookup(group && group.name);
+        if (label) localLabels.add(label);
+      });
+      addBaseReferenceIssue(result, key, 'unit name or previously defined unit type tag', collectUniqueValues(invalid));
       return;
     }
 
     if (key === 'counter_rules') {
-      const groupLabels = collectValidUnitCounterGroupLabels(bundle, context.units);
       const invalidCombatants = [];
       const invalidTerrain = [];
       const invalidDistricts = [];
       parseCounterRuleItems(value).forEach((rule) => {
         if (!rule.validSyntax) return;
         [rule.attacker, rule.defender].forEach((name) => {
-          if (!isKnownCounterMatchToken(name, context.units, groupLabels)) invalidCombatants.push(name);
+          if (!isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels)) invalidCombatants.push(name);
         });
         if (rule.terrain && !COUNTER_RULE_TERRAIN_TOKENS.includes(String(rule.terrain || '').trim().toLowerCase())) {
           invalidTerrain.push(rule.terrain);
         }
         if (rule.district && !referenceKnownInAny(rule.district, [context.districts])) invalidDistricts.push(rule.district);
       });
-      addBaseReferenceIssue(result, key, 'unit name or unit counter group', collectUniqueValues(invalidCombatants));
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalidCombatants));
       addBaseReferenceIssue(result, key, 'terrain token', collectUniqueValues(invalidTerrain));
       addBaseReferenceIssue(result, key, 'district name', collectUniqueValues(invalidDistricts));
       return;
@@ -1761,22 +1739,21 @@ function auditBaseReferenceCompatibility(bundle, result) {
         (Array.isArray(rule.targets) ? rule.targets : []).forEach((target) => {
           const lookup = normalizeReferenceLookup(target);
           if (!lookup || C3X_UNIT_VISIBILITY_CLASSES.includes(lookup)) return;
-          if (!referenceKnownInAny(target, [context.units])) invalidTargets.push(target);
+          if (!isKnownUnitOrTagToken(target, context.units, unitTypeTagLabels)) invalidTargets.push(target);
         });
       });
-      addBaseReferenceIssue(result, key, 'unit name', collectUniqueValues(invalidTargets));
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalidTargets));
       return;
     }
 
     if (key === 'unit_limits') {
-      const groupLabels = collectValidUnitLimitGroupLabels(bundle, context.units);
       const invalid = parseNameAmountItems(value)
         .map((item) => item.name)
         .filter((name) => {
           const lookup = normalizeReferenceLookup(name);
-          return lookup && !groupLabels.has(lookup) && !referenceKnownInAny(name, [context.units]);
+          return lookup && !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels);
         });
-      addBaseReferenceIssue(result, key, 'unit name or unit limit group', collectUniqueValues(invalid));
+      addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalid));
       return;
     }
 
@@ -1790,6 +1767,11 @@ function auditBaseReferenceCompatibility(bundle, result) {
         improvements: 'improvement/building name',
         units: 'unit name'
       };
+      if (meta.referenceTab === 'units') {
+        const invalid = parseBracketedOptionTokens(value).filter((name) => !isKnownUnitOrTagToken(name, context.units, unitTypeTagLabels));
+        addBaseReferenceIssue(result, key, 'unit name or unit type tag', collectUniqueValues(invalid));
+        return;
+      }
       addBaseReferenceIssue(result, key, labelByTab[meta.referenceTab] || 'reference name', collectInvalidReferences(parseBracketedOptionTokens(value), context[meta.referenceTab]));
       return;
     }

@@ -54,13 +54,17 @@ const SCIENCE_ADVISOR_BACKGROUND_RELATIVE_PATHS = [
 const SCIENCE_ADVISOR_TECHBOX_RELATIVE_PATH = 'Art/Advisors/techboxes.pcx';
 const SCIENCE_ADVISOR_ARROW_METADATA_RELATIVE_PATH = 'c3x_editor_tech_tree_arrows.json';
 const C3X_BASE_UI_DEFAULTS = Object.freeze({
-  unit_limit_groups: '[]',
+  diplo_demand_rate_between_ai_players: '0',
+  limit_ai_to_one_demand_per_turn: 'false',
+  show_ai_demand_info_popup: 'false',
+  remove_human_player_bias_from_ai_war_planning: 'false',
+  unit_type_tags: '[]',
+  pollution_spawn_effect: 'standard',
   radar_tower_detection_distance: '0',
   outpost_detection_distance: '0',
   steal_plans_duration: '1',
   enable_pollution_from_free_improvements: 'false',
   enable_unit_counters: 'false',
-  unit_groups: '[]',
   counter_rules: '[]',
   prefer_less_expensive_defenders: 'false',
   enable_alternate_view_distance_logic: 'false',
@@ -11179,17 +11183,40 @@ function getSectionFieldByKey(section, key) {
   return fields.find((field) => String(field && field.key || '').trim().toLowerCase() === needle) || null;
 }
 
-function collectUsedDistrictImageFileNames(districtSections, excludedSection = null) {
+function getPendingSectionImportMeta(section, tabKey) {
+  const pending = section && section._pendingSectionImport && typeof section._pendingSectionImport === 'object'
+    ? section._pendingSectionImport
+    : null;
+  if (pending) {
+    const pendingTabKey = String(pending.tabKey || '').trim();
+    if (!pendingTabKey || pendingTabKey === tabKey) return pending;
+  }
+  if (tabKey === 'districts' && section && section._pendingDistrictImport && typeof section._pendingDistrictImport === 'object') {
+    return section._pendingDistrictImport;
+  }
+  return null;
+}
+
+function getSectionImageFieldKey(tabKey) {
+  return tabKey === 'districts' ? 'img_paths' : 'img_path';
+}
+
+function collectUsedSectionImageFileNames(sections, tabKey, excludedSection = null) {
   const used = new Set();
-  (Array.isArray(districtSections) ? districtSections : []).forEach((section) => {
+  const fieldKey = getSectionImageFieldKey(tabKey);
+  (Array.isArray(sections) ? sections : []).forEach((section) => {
     if (!section || section === excludedSection) return;
-    const field = getSectionFieldByKey(section, 'img_paths');
+    const field = getSectionFieldByKey(section, fieldKey);
     tokenizeSectionListPreservingQuotes(field && field.value)
       .map((token) => sanitizePcxFileName(token).toLowerCase())
       .filter(Boolean)
       .forEach((name) => used.add(name));
   });
   return used;
+}
+
+function collectUsedDistrictImageFileNames(districtSections, excludedSection = null) {
+  return collectUsedSectionImageFileNames(districtSections, 'districts', excludedSection);
 }
 
 function makeUniqueDistrictImportFileName(baseFileName, usedNames, targetContentRoot, targetScenarioRoots, plannedByName) {
@@ -11220,13 +11247,10 @@ function makeUniqueDistrictImportFileName(baseFileName, usedNames, targetContent
 
 function prepareImportedDistrictArtWrites({ tabs, targetContentRoot, targetScenarioRoots, c3xPath, civ3Path }) {
   const root = String(targetContentRoot || '').trim();
-  const districtTab = tabs && tabs.districts;
-  const sections = (((districtTab || {}).model || {}).sections || []);
-  if (!root || !Array.isArray(sections) || sections.length === 0) return { ok: true, writes: [] };
-  const importedSections = sections.filter((section) => section && section._pendingDistrictImport);
-  if (importedSections.length === 0) return { ok: true, writes: [] };
+  if (!root || !tabs) return { ok: true, writes: [] };
   const sourceRootsCache = new Map();
   const plannedByName = new Map();
+  const plannedByContentHash = new Map();
   const writes = [];
 
   const getSourceRoots = (sourceBiqPath) => {
@@ -11245,64 +11269,80 @@ function prepareImportedDistrictArtWrites({ tabs, targetContentRoot, targetScena
     return roots;
   };
 
-  importedSections.forEach((section) => {
-    const importMeta = section && section._pendingDistrictImport;
-    const sourceBiqPath = String(importMeta && importMeta.sourceBiqPath || '').trim();
-    const sourceRoots = dedupePathList([
-      ...getSourceRoots(sourceBiqPath),
-      ...(Array.isArray(importMeta && importMeta.sourceScenarioPaths) ? importMeta.sourceScenarioPaths : [])
-    ].filter(Boolean));
-    const field = getSectionFieldByKey(section, 'img_paths');
-    if (!field || !String(field.value || '').trim()) return;
-    const tokens = tokenizeSectionListPreservingQuotes(field.value);
-    const usedNames = collectUsedDistrictImageFileNames(sections, section);
-    const nextTokens = tokens.map((token) => {
-      const originalFileName = sanitizePcxFileName(token);
-      const sourcePath = resolveDistrictPcxPathFromRoots(token, c3xPath, sourceRoots);
-      if (!sourcePath) return originalFileName;
-      if (!isPathWithinAnyRoot(sourcePath, sourceRoots)) return originalFileName;
-      let data = null;
-      try {
-        data = fs.readFileSync(sourcePath);
-      } catch (_err) {
-        return originalFileName;
-      }
-      const originalKey = originalFileName.toLowerCase();
-      const targetCandidates = getDistrictPcxCandidatePaths(originalFileName, targetScenarioRoots);
-      if (fileDataMatchesAnyCandidate(data, targetCandidates)) {
-        return originalFileName;
-      }
-      const planned = plannedByName.get(originalKey);
-      if (planned && Buffer.compare(planned.data, data) === 0) {
-        return planned.fileName;
-      }
-      const canUseOriginalName = !usedNames.has(originalKey)
-        && !plannedByName.has(originalKey)
-        && !targetCandidates.some((candidatePath) => {
-          try { return fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile(); } catch (_err) { return false; }
+  ['districts', 'wonders', 'naturalWonders'].forEach((tabKey) => {
+    const tab = tabs && tabs[tabKey];
+    const sections = (((tab || {}).model || {}).sections || []);
+    if (!Array.isArray(sections) || sections.length === 0) return;
+    const importedSections = sections.filter((section) => getPendingSectionImportMeta(section, tabKey));
+    if (importedSections.length === 0) return;
+    const fieldKey = getSectionImageFieldKey(tabKey);
+
+    importedSections.forEach((section) => {
+      const importMeta = getPendingSectionImportMeta(section, tabKey);
+      const sourceBiqPath = String(importMeta && importMeta.sourceBiqPath || '').trim();
+      const sourceRoots = dedupePathList([
+        ...getSourceRoots(sourceBiqPath),
+        ...(Array.isArray(importMeta && importMeta.sourceScenarioPaths) ? importMeta.sourceScenarioPaths : [])
+      ].filter(Boolean));
+      const field = getSectionFieldByKey(section, fieldKey);
+      if (!field || !String(field.value || '').trim()) return;
+      const tokens = tokenizeSectionListPreservingQuotes(field.value);
+      const usedNames = collectUsedSectionImageFileNames(sections, tabKey, section);
+      const nextTokens = tokens.map((token) => {
+        const originalFileName = sanitizePcxFileName(token);
+        const sourcePath = resolveDistrictPcxPathFromRoots(token, c3xPath, sourceRoots);
+        if (!sourcePath) return originalFileName;
+        if (!isPathWithinAnyRoot(sourcePath, sourceRoots)) return originalFileName;
+        let data = null;
+        try {
+          data = fs.readFileSync(sourcePath);
+        } catch (_err) {
+          return originalFileName;
+        }
+        const originalKey = originalFileName.toLowerCase();
+        const contentHash = crypto.createHash('sha256').update(data).digest('hex');
+        const targetCandidates = getDistrictPcxCandidatePaths(originalFileName, targetScenarioRoots);
+        if (fileDataMatchesAnyCandidate(data, targetCandidates)) {
+          return originalFileName;
+        }
+        const plannedForContent = plannedByContentHash.get(contentHash);
+        if (plannedForContent && Buffer.compare(plannedForContent.data, data) === 0) {
+          return plannedForContent.fileName;
+        }
+        const canUseOriginalName = !usedNames.has(originalKey)
+          && !plannedByName.has(originalKey)
+          && !targetCandidates.some((candidatePath) => {
+            try { return fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile(); } catch (_err) { return false; }
+          });
+        const target = canUseOriginalName
+          ? {
+              fileName: originalFileName,
+              targetPath: path.join(root, 'Art', 'Districts', '1200', originalFileName)
+            }
+          : makeUniqueDistrictImportFileName(originalFileName, usedNames, root, targetScenarioRoots, plannedByName);
+        usedNames.add(String(target.fileName || '').toLowerCase());
+        plannedByName.set(String(target.fileName || '').toLowerCase(), {
+          fileName: target.fileName,
+          targetPath: target.targetPath,
+          sourcePath,
+          data
         });
-      const target = canUseOriginalName
-        ? {
-            fileName: originalFileName,
-            targetPath: path.join(root, 'Art', 'Districts', '1200', originalFileName)
-          }
-        : makeUniqueDistrictImportFileName(originalFileName, usedNames, root, targetScenarioRoots, plannedByName);
-      usedNames.add(String(target.fileName || '').toLowerCase());
-      plannedByName.set(String(target.fileName || '').toLowerCase(), {
-        fileName: target.fileName,
-        targetPath: target.targetPath,
-        sourcePath,
-        data
+        plannedByContentHash.set(contentHash, {
+          fileName: target.fileName,
+          targetPath: target.targetPath,
+          sourcePath,
+          data
+        });
+        writes.push({
+          kind: 'districtArt',
+          path: target.targetPath,
+          sourcePath,
+          data
+        });
+        return target.fileName;
       });
-      writes.push({
-        kind: 'districtArt',
-        path: target.targetPath,
-        sourcePath,
-        data
-      });
-      return target.fileName;
+      field.value = nextTokens.filter(Boolean).join(', ');
     });
-    field.value = nextTokens.filter(Boolean).join(', ');
   });
 
   return { ok: true, writes };
@@ -11400,7 +11440,7 @@ function buildSavePlan(payload) {
   sectionTabsChangedByImprovementRenames.forEach((tabKey) => dirtyTabs.add(tabKey));
 
   let importedDistrictArtWrites = { ok: true, writes: [] };
-  if (mode === 'scenario' && (dirtyTabs.size === 0 || dirtyTabs.has('districts'))) {
+  if (mode === 'scenario' && (dirtyTabs.size === 0 || dirtyTabs.has('districts') || dirtyTabs.has('wonders') || dirtyTabs.has('naturalWonders'))) {
     importedDistrictArtWrites = prepareImportedDistrictArtWrites({
       tabs: payload.tabs || {},
       targetContentRoot: scenarioContext.contentWriteRoot || scenarioDir,
