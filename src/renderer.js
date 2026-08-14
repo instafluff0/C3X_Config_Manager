@@ -15688,27 +15688,32 @@ async function loadPreviewsForReferenceEntry(tabKey, entry, previewWrap) {
   }
 }
 
-function drawPreviewFrameToCanvas(preview, canvas, options = {}) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx || !preview) return;
-  let rgba;
+function getPreviewFrameBytes(preview, frameIndex = 0) {
+  if (!preview) return null;
   if (preview.rgbaBase64) {
     if (!preview._cachedRgbaBytes) {
       preview._cachedRgbaBytes = fromBase64ToUint8(preview.rgbaBase64);
     }
-    rgba = preview._cachedRgbaBytes;
-  } else if (preview.framesBase64 && preview.framesBase64[0]) {
-    const frameCount = preview.framesBase64.length;
-    const requestedFrame = Number.isFinite(Number(options.frameIndex)) ? Math.trunc(Number(options.frameIndex)) : 0;
-    const frameIndex = Math.max(0, Math.min(frameCount - 1, requestedFrame));
-    if (!preview._cachedFrameBytesByIndex) preview._cachedFrameBytesByIndex = {};
-    if (!preview._cachedFrameBytesByIndex[frameIndex]) {
-      preview._cachedFrameBytesByIndex[frameIndex] = fromBase64ToUint8(preview.framesBase64[frameIndex]);
-    }
-    rgba = preview._cachedFrameBytesByIndex[frameIndex];
-  } else {
-    return;
+    return preview._cachedRgbaBytes;
   }
+  if (preview.framesBase64 && preview.framesBase64[0]) {
+    const frameCount = preview.framesBase64.length;
+    const safeFrameIndex = Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(frameIndex) || 0)));
+    if (!preview._cachedFrameBytesByIndex) preview._cachedFrameBytesByIndex = {};
+    if (!preview._cachedFrameBytesByIndex[safeFrameIndex]) {
+      preview._cachedFrameBytesByIndex[safeFrameIndex] = fromBase64ToUint8(preview.framesBase64[safeFrameIndex]);
+    }
+    return preview._cachedFrameBytesByIndex[safeFrameIndex];
+  }
+  return null;
+}
+
+function drawPreviewFrameToCanvas(preview, canvas, options = {}) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx || !preview) return;
+  const requestedFrame = Number.isFinite(Number(options.frameIndex)) ? Math.trunc(Number(options.frameIndex)) : 0;
+  let rgba = getPreviewFrameBytes(preview, requestedFrame);
+  if (!rgba) return;
   if (options.transparentMagenta) {
     const copy = new Uint8ClampedArray(rgba);
     for (let i = 0; i < copy.length; i += 4) {
@@ -29207,6 +29212,12 @@ function createReferencePicker(config) {
   const searchPlaceholder = String(opts.searchPlaceholder || 'Search...');
   const showOptionThumbs = opts.showOptionThumbs !== false;
   const renderOptionThumb = typeof opts.renderOptionThumb === 'function' ? opts.renderOptionThumb : null;
+  const thumbHydrateLimit = Number.isFinite(Number(opts.thumbHydrateLimit)) && Number(opts.thumbHydrateLimit) > 0
+    ? Math.max(1, Math.floor(Number(opts.thumbHydrateLimit)))
+    : 28;
+  const menuMaxHeight = Number.isFinite(Number(opts.menuMaxHeight)) && Number(opts.menuMaxHeight) > 0
+    ? Math.max(120, Math.floor(Number(opts.menuMaxHeight)))
+    : 280;
   const menuPortalRootResolver = typeof opts.menuPortalRoot === 'function'
     ? opts.menuPortalRoot
     : () => opts.menuPortalRoot || null;
@@ -29611,7 +29622,7 @@ function createReferencePicker(config) {
   const positionPortaledMenu = () => {
     if (!usePortaledMenu || !menuPortalRoot || menu.classList.contains('hidden')) return;
     const wrapRect = wrap.getBoundingClientRect();
-    const desiredMenuHeight = Math.min(280, Math.max(120, listWrap.scrollHeight + 48));
+    const desiredMenuHeight = Math.min(menuMaxHeight, Math.max(120, listWrap.scrollHeight + 48));
     const availableBelow = Math.max(0, window.innerHeight - wrapRect.bottom - 8);
     const availableAbove = Math.max(0, wrapRect.top - 8);
     const openUpward = availableBelow < Math.min(desiredMenuHeight, 220) && availableAbove > availableBelow;
@@ -29656,7 +29667,7 @@ function createReferencePicker(config) {
         menu.style.maxHeight = '';
         const wrapRect = wrap.getBoundingClientRect();
         const scrollBounds = getScrollBounds(wrap);
-        const desiredMenuHeight = Math.min(280, Math.max(120, listWrap.scrollHeight + 48));
+        const desiredMenuHeight = Math.min(menuMaxHeight, Math.max(120, listWrap.scrollHeight + 48));
         const availableBelow = Math.max(0, scrollBounds.bottom - wrapRect.bottom - 8);
         const availableAbove = Math.max(0, wrapRect.top - scrollBounds.top - 8);
         const openUpward = availableBelow < Math.min(desiredMenuHeight, 220) && availableAbove > availableBelow;
@@ -29668,8 +29679,8 @@ function createReferencePicker(config) {
       }
       search.value = '';
       Array.from(listWrap.querySelectorAll('.tech-picker-row')).forEach((row) => row.classList.remove('hidden'));
-      hydrateVisibleOptionThumbs(28);
-      requestAnimationFrame(() => hydrateVisibleOptionThumbs(28));
+      hydrateVisibleOptionThumbs(thumbHydrateLimit);
+      requestAnimationFrame(() => hydrateVisibleOptionThumbs(thumbHydrateLimit));
       search.focus();
     }
   });
@@ -29686,11 +29697,11 @@ function createReferencePicker(config) {
       const hay = String(row.dataset.search || '');
       row.classList.toggle('hidden', !!needle && !hay.includes(needle));
     });
-    hydrateVisibleOptionThumbs(28);
+    hydrateVisibleOptionThumbs(thumbHydrateLimit);
   });
   menu.addEventListener('scroll', () => {
     if (menu.classList.contains('hidden')) return;
-    hydrateVisibleOptionThumbs(20);
+    hydrateVisibleOptionThumbs(Math.max(4, Math.min(thumbHydrateLimit, 20)));
   });
   if (usePortaledMenu) {
     const repositionPortaledMenu = () => {
@@ -44703,6 +44714,27 @@ const SECTION_IMPORT_CONFIGS = {
       scenarioPath: importSourcePath,
       scenarioPaths: importScenarioPaths
     })
+  },
+  animations: {
+    title: 'Tile Animation: Import',
+    body: 'Select a source scenario, choose a tile animation, then confirm the name for the imported tile animation.',
+    sourcePrompt: 'Select a source scenario to load tile animations.',
+    emptySource: 'Selected scenario has no tile animations.',
+    searchPlaceholder: 'Search Tile Animations in selected source...',
+    noneLabel: 'Choose tile animation to import...',
+    fallbackName: 'Tile Animation',
+    thumbClassName: 'animation-entry-thumb',
+    statusName: 'tile animation',
+    display: (section, index) => {
+      const primary = getSectionTitle(section, SECTION_SCHEMAS.animations, index);
+      return { primary, secondary: normalizeAnimationIniRelativePath(getFieldValue(section, 'ini_path')) || '' };
+    },
+    loadThumb: (section, holder, importSourcePath, importScenarioPaths) => loadAnimationThumbnail(section, holder, 44, {
+      animated: true,
+      maxFrames: 14,
+      scenarioPath: importSourcePath,
+      scenarioPaths: importScenarioPaths
+    })
   }
 };
 
@@ -44809,6 +44841,7 @@ async function promptSectionImportAction(tab, tabKey) {
 
   const pickerHost = document.createElement('div');
   pickerHost.className = 'entity-import-picker district-import-picker';
+  if (config.pickerClassName) pickerHost.classList.add(...String(config.pickerClassName).split(/\s+/).filter(Boolean));
   form.appendChild(pickerHost);
   el.entityModalContent.appendChild(form);
 
@@ -44881,6 +44914,9 @@ async function promptSectionImportAction(tab, tabKey) {
       searchPlaceholder: config.searchPlaceholder,
       noneLabel: config.noneLabel,
       thumbClassName: config.thumbClassName,
+      menuClassName: config.menuClassName || '',
+      thumbHydrateLimit: config.thumbHydrateLimit || 28,
+      menuMaxHeight: config.menuMaxHeight || 280,
       renderOptionThumb: ({ holder, option }) => {
         const index = Number.parseInt(String(option && option.value || ''), 10);
         const section = Number.isFinite(index) ? importSections[index] : null;
@@ -66583,8 +66619,60 @@ function loadNaturalWonderThumbnail(section, holder, canvasSize = 35, options = 
   }).catch(() => false);
 }
 
-function loadAnimationThumbnail(section, holder, canvasSize = 35) {
+function getAnimationThumbnailDelayMs(section, preview) {
+  const seconds = Number.parseFloat(getFieldValue(section, 'frame_time_seconds'));
+  if (Number.isFinite(seconds) && seconds > 0) return Math.max(60, Math.min(500, Math.round(seconds * 1000)));
+  const speed = Number(preview && preview.speedField);
+  if (Number.isFinite(speed) && speed > 0) return Math.max(60, Math.min(500, Math.round(speed)));
+  return 120;
+}
+
+function stopAnimationThumbnailPlayback(holder) {
+  if (!holder || !holder.__animationThumbPlayback) return;
+  const playback = holder.__animationThumbPlayback;
+  if (playback.timer) window.clearInterval(playback.timer);
+  holder.__animationThumbPlayback = null;
+}
+
+function playAnimationThumbnailPreview(holder, canvas, section, preview, options = {}) {
+  if (!holder || !canvas || !preview) return false;
+  stopAnimationThumbnailPlayback(holder);
+  const token = holder.__animationThumbToken;
+  const frames = Array.isArray(preview.framesBase64) ? preview.framesBase64 : [];
+  const frameCount = frames.length;
+  if (frameCount <= 1 || !(options && options.animated)) {
+    drawPreviewFrameToCanvas(preview, canvas, {
+      frameIndex: 0,
+      transparentMagenta: true,
+      transparentBackground: true
+    });
+    return true;
+  }
+  let frameIndex = 0;
+  const paint = () => {
+    if (!canvas.isConnected || holder.__animationThumbToken !== token) {
+      stopAnimationThumbnailPlayback(holder);
+      return;
+    }
+    drawPreviewFrameToCanvas(preview, canvas, {
+      frameIndex,
+      transparentMagenta: true,
+      transparentBackground: true
+    });
+    frameIndex = (frameIndex + 1) % frameCount;
+  };
+  paint();
+  holder.__animationThumbPlayback = {
+    timer: window.setInterval(paint, getAnimationThumbnailDelayMs(section, preview))
+  };
+  return true;
+}
+
+function loadAnimationThumbnail(section, holder, canvasSize = 35, options = {}) {
   if (!holder) return Promise.resolve(false);
+  stopAnimationThumbnailPlayback(holder);
+  holder.__animationThumbToken = (Number(holder.__animationThumbToken) || 0) + 1;
+  const loadToken = holder.__animationThumbToken;
   holder.innerHTML = '';
   const canvas = document.createElement('canvas');
   canvas.width = canvasSize;
@@ -66595,21 +66683,22 @@ function loadAnimationThumbnail(section, holder, canvasSize = 35) {
   const iniPath = normalizeAnimationIniRelativePath(getFieldValue(section, 'ini_path'));
   if (!iniPath) return Promise.resolve(false);
   const directionIndex = resolveAnimationDirectionIndex(section);
-  const scenarioPaths = getScenarioPreviewPaths();
+  const scenarioPaths = Array.isArray(options.scenarioPaths) ? options.scenarioPaths : getScenarioPreviewPaths();
+  const scenarioPath = options.scenarioPath || state.settings.scenarioPath;
   const cacheKey = JSON.stringify({
     kind: 'animation-list-thumb',
     c3xPath: state.settings.c3xPath,
-    scenarioPath: state.settings.scenarioPath,
+    scenarioPath,
     scenarioPaths,
     iniPath,
     directionIndex,
-    frameOffset: 'middle',
-    maxFrames: 1
+    frameOffset: options.animated ? '' : 'middle',
+    maxFrames: options.animated ? Math.max(2, Math.min(24, Math.floor(Number(options.maxFrames) || 14))) : 1
   });
   const paint = (preview) => {
+    if (!holder.isConnected || holder.__animationThumbToken !== loadToken) return false;
     if (!preview) return false;
-    drawPreviewFrameToCanvas(preview, canvas, { frameIndex: 0, transparentMagenta: true });
-    return true;
+    return playAnimationThumbnailPreview(holder, canvas, section, preview, options);
   };
   if (state.previewCache.has(cacheKey)) {
     return Promise.resolve(paint(state.previewCache.get(cacheKey)));
@@ -66619,9 +66708,9 @@ function loadAnimationThumbnail(section, holder, canvasSize = 35) {
     c3xPath: state.settings.c3xPath,
     iniPath,
     directionIndex,
-    frameOffset: 'middle',
-    maxFrames: 1,
-    scenarioPath: state.settings.scenarioPath,
+    frameOffset: options.animated ? '' : 'middle',
+    maxFrames: options.animated ? Math.max(2, Math.min(24, Math.floor(Number(options.maxFrames) || 14))) : 1,
+    scenarioPath,
     scenarioPaths
   }).then((res) => {
     if (!res || !res.ok) return false;
@@ -68401,11 +68490,15 @@ function cloneSectionForCreate(tab, sourceSection, mode, tabKey, options = {}) {
   section.fields.unshift({ key: 'name', value: newName });
   if (hadDisplayName) section.fields.splice(1, 0, { key: 'display_name', value: newName });
   if (options.importSourcePath) {
-    section._pendingSectionImport = {
+    const pendingImport = {
       tabKey: String(tabKey || '').trim(),
       sourceBiqPath: String(options.importSourcePath || ''),
       sourceScenarioPaths: Array.isArray(options.importScenarioPaths) ? options.importScenarioPaths.slice() : []
     };
+    if (String(tabKey || '').trim() === 'animations') {
+      pendingImport.sourceIniPath = getSectionFieldValueCaseInsensitive(sourceSection || section, 'ini_path');
+    }
+    section._pendingSectionImport = pendingImport;
   }
   return section;
 }
@@ -70027,7 +70120,7 @@ function renderSectionTab(tab, tabKey) {
     addSectionBtn.addEventListener('click', () => addSection(tab, tabKey));
     actionRow.appendChild(addSectionBtn);
 
-    if (tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders') {
+    if (tabKey === 'districts' || tabKey === 'wonders' || tabKey === 'naturalWonders' || tabKey === 'animations') {
       const copySectionBtn = document.createElement('button');
       copySectionBtn.type = 'button';
       copySectionBtn.className = 'ghost action-copy';

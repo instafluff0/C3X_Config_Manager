@@ -669,6 +669,81 @@ test('saveBundle writes staged Tile Animation INI repairs to scenario Art/Animat
   assert.equal(fs.readFileSync(path.join(scenarioTextDir, 'Civilopedia.txt'), 'latin1'), civilopediaText);
 });
 
+test('saveBundle localizes imported Tile Animation INI and FLC assets', () => {
+  const root = mkTmpDir();
+  const sourceScenario = mkTmpDir();
+  const targetScenario = mkTmpDir();
+  fs.writeFileSync(path.join(root, 'default.c3x_config.ini'), 'flag = true\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_config.txt'), '#District\nname = Base\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_wonders_config.txt'), '#Wonder\nname = W\nimg_row = 0\nimg_column = 0\nimg_construct_row = 0\nimg_construct_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.districts_natural_wonders_config.txt'), '#Wonder\nname = N\nterrain_type = grassland\nimg_row = 0\nimg_column = 0\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'default.tile_animations.txt'), '#Animation\nname = Base\nini_path = Base\\Base.INI\ntype = terrain\nterrain_types = grassland\n', 'utf8');
+  const sourceAnimationDir = path.join(sourceScenario, 'Art', 'Animations', 'Resources', 'Cow');
+  fs.mkdirSync(sourceAnimationDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceAnimationDir, 'Cow.INI'), [
+    '[Animations]',
+    'DEFAULT=Resources\\Cow\\cow.flc',
+    'RUN=Resources\\Cow\\cow.flc',
+    '',
+    '[Timing]',
+    'DEFAULT=0.170000',
+    ''
+  ].join('\r\n'), 'latin1');
+  const flcData = Buffer.from([0xca, 0xfe, 0xba, 0xbe]);
+  fs.writeFileSync(path.join(sourceAnimationDir, 'cow.flc'), flcData);
+
+  const bundle = loadBundle({ mode: 'scenario', c3xPath: root, scenarioPath: targetScenario });
+  const importedSection = {
+    marker: '#Animation',
+    comments: [],
+    fields: [
+      { key: 'name', value: 'Cow' },
+      { key: 'ini_path', value: 'Resources\\Cow\\Cow.INI' },
+      { key: 'type', value: 'resource' }
+    ],
+    _pendingSectionImport: {
+      tabKey: 'animations',
+      sourceIniPath: 'Resources\\Cow\\Cow.INI',
+      sourceScenarioPaths: [sourceScenario]
+    }
+  };
+  bundle.tabs.animations.model.sections = [importedSection];
+
+  const preview = previewSavePlan({
+    mode: 'scenario',
+    c3xPath: root,
+    scenarioPath: targetScenario,
+    dirtyTabs: ['animations'],
+    tabs: bundle.tabs
+  });
+
+  assert.equal(preview.ok, true);
+  assert.ok(preview.writes.some((write) => write.kind === 'animations'));
+  assert.ok(preview.writes.some((write) => write.kind === 'tileAnimationIni'));
+  assert.ok(preview.writes.some((write) => write.kind === 'tileAnimationAsset'));
+  assert.equal(importedSection.fields.find((field) => field.key === 'ini_path').value, 'Imported\\Cow\\Cow.INI');
+
+  const saveResult = saveBundle({
+    mode: 'scenario',
+    c3xPath: root,
+    scenarioPath: targetScenario,
+    dirtyTabs: ['animations'],
+    tabs: bundle.tabs
+  });
+
+  assert.equal(saveResult.ok, true);
+  const targetIniPath = path.join(targetScenario, 'Art', 'Animations', 'Imported', 'Cow', 'Cow.INI');
+  const targetFlcPath = path.join(targetScenario, 'Art', 'Animations', 'Imported', 'Cow', 'cow.flc');
+  assert.equal(fs.existsSync(targetIniPath), true);
+  assert.equal(fs.existsSync(targetFlcPath), true);
+  assert.equal(fs.readFileSync(targetFlcPath).toString('hex'), flcData.toString('hex'));
+  const savedIni = fs.readFileSync(targetIniPath, 'latin1');
+  assert.match(savedIni, /DEFAULT=cow\.flc/);
+  assert.match(savedIni, /RUN=cow\.flc/);
+  const savedConfig = fs.readFileSync(path.join(targetScenario, 'scenario.tile_animations.txt'), 'utf8');
+  assert.match(savedConfig, /ini_path = Imported\\Cow\\Cow\.INI/);
+});
+
 test('saveBundle rejects staged Tile Animation INI repairs in Standard Game mode', () => {
   const root = mkTmpDir();
   fs.writeFileSync(path.join(root, 'default.c3x_config.ini'), 'flag = true\n', 'utf8');

@@ -1,5 +1,6 @@
 * RELEASE 28.0.0
 - Refreshed bundled C3X base defaults for the current R28 pre-release, added AI diplomacy and pollution spawn options, replaced retired unit group fields with `unit_type_tags`, and quarantined tile-destruction animation base keys behind R29.
+- Added Copy and scenario Import actions to Tile Animations, with animated source-scenario FLC thumbnails and scenario-local INI/FLC asset localization for imported animations.
 - Dedupe imported Wonder District and Natural Wonder PCX sheets by file contents so repeated imports share one scenario-local renamed copy.
 - Added Copy and scenario Import actions to Wonder Districts and Natural Wonders, including scenario-local PCX localization for imported section art.
 - Shortened R28 terrain visibility help text and kept terrain_visibility_bonus_can_stack adjacent to terrain_visibility_flat_bonus.

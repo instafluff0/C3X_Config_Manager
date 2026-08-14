@@ -3,7 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const iconv = require('iconv-lite');
-const { resolveConquestsAssetPath, resolveUnitIniPath, parseUnitAnimationIni, decodePcx, encodePcx, encodeRgbaToPcx, encodeRgbaToLeaderFlc } = require('./artPreview');
+const { resolveConquestsAssetPath, resolveAnimationIniPath, resolveUnitIniPath, parseUnitAnimationIni, decodePcx, encodePcx, encodeRgbaToPcx, encodeRgbaToLeaderFlc } = require('./artPreview');
 const log = require('./log');
 const techBoxLayout = require('./techBoxLayout');
 const scienceAdvisorArrows = require('./scienceAdvisorArrows');
@@ -11457,6 +11457,19 @@ function buildSavePlan(payload) {
     }
   }
 
+  let importedTileAnimationAssetWrites = { ok: true, writes: [] };
+  if (mode === 'scenario' && (dirtyTabs.size === 0 || dirtyTabs.has('animations'))) {
+    importedTileAnimationAssetWrites = prepareImportedTileAnimationAssetWrites({
+      tabs: payload.tabs || {},
+      targetContentRoot: scenarioContext.contentWriteRoot || scenarioDir,
+      c3xPath,
+      civ3Path
+    });
+    if (!importedTileAnimationAssetWrites || !importedTileAnimationAssetWrites.ok) {
+      return { ok: false, error: importedTileAnimationAssetWrites && importedTileAnimationAssetWrites.error ? importedTileAnimationAssetWrites.error : 'Failed to prepare imported tile animation assets.' };
+    }
+  }
+
   const baseTab = payload.tabs.base;
   const shouldSaveBase = dirtyTabs.size === 0 || dirtyTabs.has('base');
   if (shouldSaveBase && baseTab && filePaths.base.targetPath) {
@@ -11511,6 +11524,14 @@ function buildSavePlan(payload) {
       });
       saveReport.push({ kind, path: targetPath });
     }
+  }
+
+  for (const animationWrite of (importedTileAnimationAssetWrites && importedTileAnimationAssetWrites.writes) || []) {
+    const protectErr = failIfProtected(animationWrite.path, 'imported Tile Animation asset target');
+    if (protectErr) return { ok: false, error: protectErr };
+    if (bufferMatchesExistingFile(animationWrite.path, animationWrite.data)) continue;
+    plannedWrites.push(animationWrite);
+    saveReport.push({ kind: animationWrite.kind || 'tileAnimationAsset', path: animationWrite.path, sourcePath: animationWrite.sourcePath });
   }
 
   if (dirtyTabs.size === 0 || dirtyTabs.has('animations')) {
@@ -15177,6 +15198,179 @@ function buildCanonicalTileAnimationIniBuffer({ sourcePath, flcFileName }) {
   pushSection('Palette', paletteFields.length > 0 ? paletteFields : [{ key: 'PALETTE', value: '' }]);
   const text = `${lines.join(lineEnding).replace(/\r?\n$/g, '')}${lineEnding}`;
   return { ok: true, buffer: Buffer.from(text, 'latin1') };
+}
+
+function sanitizeTileAnimationImportFolderName(value) {
+  return String(value || 'Animation')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/[<>:"|?*\x00-\x1f\\/]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    || 'Animation';
+}
+
+function makeUniqueTileAnimationImportFolderName(baseName, targetContentRoot, reservedFolders) {
+  const base = sanitizeTileAnimationImportFolderName(baseName);
+  const reserved = reservedFolders instanceof Set ? reservedFolders : new Set();
+  for (let idx = 1; idx < 10000; idx += 1) {
+    const candidate = idx === 1 ? base : `${base}_${idx}`;
+    const rel = `Imported/${candidate}`;
+    const key = rel.toLowerCase();
+    if (reserved.has(key)) continue;
+    const targetDir = path.join(targetContentRoot, 'Art', 'Animations', rel.replace(/\//g, path.sep));
+    let exists = false;
+    try { exists = fs.existsSync(targetDir); } catch (_err) { exists = false; }
+    if (exists) continue;
+    reserved.add(key);
+    return rel;
+  }
+  const fallback = `Imported/${base}_${Date.now()}`;
+  reserved.add(fallback.toLowerCase());
+  return fallback;
+}
+
+function setSectionFieldValue(section, key, value) {
+  if (!section || !Array.isArray(section.fields)) return;
+  const needle = canonicalFieldKey(key);
+  const field = section.fields.find((entry) => canonicalFieldKey(entry && entry.key) === needle);
+  if (field) {
+    field.value = String(value == null ? '' : value);
+  } else {
+    section.fields.push({ key, value: String(value == null ? '' : value) });
+  }
+}
+
+function getTileAnimationImportedSections(tabs) {
+  const sections = ((((tabs || {}).animations || {}).model || {}).sections || []);
+  return (Array.isArray(sections) ? sections : []).filter((section) => getPendingSectionImportMeta(section, 'animations'));
+}
+
+function updateTileAnimationIniActionValues(buffer, replacementsByKey) {
+  const raw = Buffer.isBuffer(buffer) ? buffer : Buffer.from(String(buffer || ''), 'latin1');
+  const text = raw.toString('latin1');
+  const lineEnding = text.includes('\r\n') ? '\r\n' : '\n';
+  const replacements = replacementsByKey instanceof Map ? replacementsByKey : new Map();
+  let section = '';
+  const lines = text.split(/\r?\n/);
+  const hadTrailingNewline = /\r?\n$/.test(text);
+  const nextLines = lines.map((line, index) => {
+    if (index === lines.length - 1 && line === '' && hadTrailingNewline) return line;
+    const sec = String(line || '').trim().match(/^\[(.+)\]$/);
+    if (sec) {
+      section = String(sec[1] || '').trim().toUpperCase();
+      return line;
+    }
+    if (section && section !== 'ANIMATIONS') return line;
+    const m = String(line || '').match(/^(\s*([^=;\[]+?)\s*=\s*)(.*)$/);
+    if (!m) return line;
+    const keyUpper = String(m[2] || '').trim().toUpperCase();
+    const replacement = replacements.get(keyUpper);
+    if (!replacement) return line;
+    return `${m[1]}${replacement}`;
+  });
+  return Buffer.from(nextLines.join(lineEnding), 'latin1');
+}
+
+function prepareImportedTileAnimationAssetWrites({ tabs, targetContentRoot, c3xPath, civ3Path }) {
+  const root = String(targetContentRoot || '').trim();
+  const importedSections = getTileAnimationImportedSections(tabs);
+  if (!root || importedSections.length === 0) return { ok: true, writes: [] };
+  const sourceRootsCache = new Map();
+  const reservedFolders = new Set();
+  const writes = [];
+
+  const getSourceRoots = (sourceBiqPath) => {
+    const sourcePath = String(sourceBiqPath || '').trim();
+    if (!sourcePath) return [];
+    if (sourceRootsCache.has(sourcePath)) return sourceRootsCache.get(sourcePath);
+    let roots = [];
+    try {
+      const sourceBiqTab = loadBiqTab({ mode: 'scenario', civ3Path, scenarioPath: sourcePath });
+      const ctx = deriveScenarioPathContext({ scenarioPath: sourcePath, civ3Path, biqTab: sourceBiqTab });
+      roots = dedupePathList([ctx.biqRoot, ...ctx.searchRoots].filter(Boolean));
+    } catch (_err) {
+      roots = [];
+    }
+    sourceRootsCache.set(sourcePath, roots);
+    return roots;
+  };
+
+  importedSections.forEach((section) => {
+    const importMeta = getPendingSectionImportMeta(section, 'animations');
+    const sourceBiqPath = String(importMeta && importMeta.sourceBiqPath || '').trim();
+    const sourceScenarioPaths = Array.isArray(importMeta && importMeta.sourceScenarioPaths) ? importMeta.sourceScenarioPaths : [];
+    const sourceRoots = dedupePathList([...getSourceRoots(sourceBiqPath), ...sourceScenarioPaths].filter(Boolean));
+    const sourceIniRel = normalizeTileAnimationIniRepairRelativePath(importMeta.sourceIniPath || getSectionFieldDisplayName(section, 'ini_path', ''));
+    if (!sourceIniRel || !isSafeRelativeTileAnimationIniPath(sourceIniRel)) return;
+    const sourceIniPath = resolveAnimationIniPath(c3xPath, sourceIniRel, sourceBiqPath, sourceRoots);
+    if (!sourceIniPath || !isPathWithinAnyRoot(sourceIniPath, sourceRoots)) return;
+
+    let iniData;
+    try {
+      iniData = fs.readFileSync(sourceIniPath);
+    } catch (_err) {
+      return;
+    }
+    const manifest = parseUnitAnimationIni(sourceIniPath);
+    const sectionName = getSectionFieldDisplayName(section, 'name', path.basename(sourceIniRel, path.extname(sourceIniRel)));
+    const importFolderRel = makeUniqueTileAnimationImportFolderName(sectionName, root, reservedFolders);
+    const targetIniRel = `${importFolderRel}/${path.basename(sourceIniRel)}`.replace(/\\/g, '/');
+    const targetIniPath = path.join(root, 'Art', 'Animations', targetIniRel.replace(/\//g, path.sep));
+    const replacementsByKey = new Map();
+    const copiedFlcNames = new Map();
+    const usedFlcNames = new Set();
+
+    (Array.isArray(manifest && manifest.actions) ? manifest.actions : []).forEach((action) => {
+      const sourceFlcPath = String(action && action.flcPath || '').trim();
+      if (!sourceFlcPath) return;
+      let flcData;
+      try {
+        if (!fs.existsSync(sourceFlcPath) || !fs.statSync(sourceFlcPath).isFile()) return;
+        flcData = fs.readFileSync(sourceFlcPath);
+      } catch (_err) {
+        return;
+      }
+      const sourceKey = `${path.resolve(sourceFlcPath).toLowerCase()}::${crypto.createHash('sha256').update(flcData).digest('hex')}`;
+      let targetFileName = copiedFlcNames.get(sourceKey);
+      if (!targetFileName) {
+        const rawBase = path.basename(sourceFlcPath) || 'Animation.flc';
+        const dot = rawBase.lastIndexOf('.');
+        const stem = (dot > 0 ? rawBase.slice(0, dot) : rawBase).replace(/[<>:"|?*\x00-\x1f\\/]+/g, '_') || 'Animation';
+        const ext = /\.flc$/i.test(dot > 0 ? rawBase.slice(dot) : '') ? rawBase.slice(dot) : '.flc';
+        for (let idx = 1; idx < 10000; idx += 1) {
+          const candidate = idx === 1 ? `${stem}${ext}` : `${stem}_${idx}${ext}`;
+          const key = candidate.toLowerCase();
+          if (usedFlcNames.has(key)) continue;
+          usedFlcNames.add(key);
+          targetFileName = candidate;
+          break;
+        }
+        if (!targetFileName) targetFileName = `${stem}_${Date.now()}${ext}`;
+        copiedFlcNames.set(sourceKey, targetFileName);
+        writes.push({
+          kind: 'tileAnimationAsset',
+          path: path.join(root, 'Art', 'Animations', importFolderRel.replace(/\//g, path.sep), targetFileName),
+          sourcePath: sourceFlcPath,
+          data: flcData
+        });
+      }
+      const actionKey = String(action && action.key || '').trim().toUpperCase();
+      if (actionKey) replacementsByKey.set(actionKey, targetFileName);
+    });
+
+    const nextIniData = updateTileAnimationIniActionValues(iniData, replacementsByKey);
+    writes.push({
+      kind: 'tileAnimationIni',
+      path: targetIniPath,
+      sourcePath: sourceIniPath,
+      data: nextIniData,
+      encoding: 'windows-1252'
+    });
+    setSectionFieldValue(section, 'ini_path', targetIniRel.replace(/\//g, '\\'));
+  });
+
+  return { ok: true, writes };
 }
 
 function collectTileAnimationIniRepairs(tabs, { mode, c3xPath, scenarioContentRoot }) {

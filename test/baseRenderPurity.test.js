@@ -1063,6 +1063,18 @@ test('Tile Animations use the shared section add/delete action row', () => {
     /if \(!useInlineFilterActions\) \{[\s\S]*?addSectionBtn\.textContent = `\+ Add \$\{schema\.entityName\}`;[\s\S]*?\}[\s\S]*?if \(useInlineFilterActions\) \{[\s\S]*?addSectionBtn\.textContent = '\+ Add';[\s\S]*?deleteSectionBtn\.innerHTML = '<span class="btn-icon">🗑<\/span>Delete';/,
     'Inline section actions should use the compact shared Add and Delete labels'
   );
+
+  assert.match(
+    text,
+    /animations:\s*\{[\s\S]*?title: 'Tile Animation: Import'[\s\S]*?loadThumb:[\s\S]*?loadAnimationThumbnail\(section, holder, 44,[\s\S]*?animated: true,[\s\S]*?maxFrames: 14,[\s\S]*?scenarioPath: importSourcePath,[\s\S]*?scenarioPaths: importScenarioPaths/,
+    'Tile Animation imports should use the shared import modal with original-size animated source-scenario FLC thumbnails'
+  );
+
+  assert.match(
+    text,
+    /if \(tabKey === 'districts' \|\| tabKey === 'wonders' \|\| tabKey === 'naturalWonders' \|\| tabKey === 'animations'\) \{[\s\S]*?copySectionBtn[\s\S]*?importSectionBtn/,
+    'Tile Animations should expose the shared Copy and Import action buttons'
+  );
 });
 
 test('Tile Animation adjacent rules use terrain thumbnails and direction chips', () => {
